@@ -1,0 +1,7 @@
+torch
+pytorch-lightning
+pandas
+numpy
+yfinance
+scikit-learn
+matplotlib
