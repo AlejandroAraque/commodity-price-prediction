@@ -10,37 +10,60 @@ import sys
 
 def _load_and_merge_data(ticker, start_date, end_date):
     """
-    Descarga el activo principal (Close, Volume) y las variables exógenas (Tasa, USD Index),
-    las fusiona por fecha y las limpia.
+    Descarga el activo principal y las variables exógenas, asegurando el orden correcto.
     """
-    EXOGENOUS_TICKERS = ['^TNX', 'DX-Y.NYB']  # Tasa de Interés (TNX) y Dólar Index (USD)
-    ALL_TICKERS = [ticker] + EXOGENOUS_TICKERS
+    # Definimos explícitamente los tickers extra
+    EX_TICKER_USA = 'DX-Y.NYB' # Dólar
+    EX_TICKER_RATE = '^TNX'    # Tipos de Interés
     
-    # 1. Descargar todos los datos (Open, High, Low, Close, Volume...)
-    df_raw = yf.download(ALL_TICKERS, start=start_date, end=end_date, interval="1d", progress=False, auto_adjust=True)
-
-    # 2. Aplanar MultiIndex y Seleccionar Características
-    # Seleccionamos solo la columna 'Close' para todos los activos
-    df_close = df_raw.xs('Close', level=0, axis=1)
+    ALL_TICKERS = [ticker, EX_TICKER_USA, EX_TICKER_RATE]
     
-    # Seleccionamos el 'Volume' (solo del activo principal)
-    if 'Volume' in df_raw.columns.get_level_values(0):
-        df_volume = df_raw['Volume'][[ticker]]
-        df_volume.columns = ['Volume']
-        df_final = pd.concat([df_close, df_volume], axis=1)
-    else:
-        df_final = df_close
+    print(f"📥 Descargando: {ALL_TICKERS}")
+    
+    # 1. Descargar (auto_adjust=True para evitar warnings y obtener precio real ajustado)
+    df_raw = yf.download(ALL_TICKERS, start=start_date, end=end_date, interval="1d", auto_adjust=True, progress=False)
 
-    # 3. Limpieza, Renombramiento y Reordenamiento
-    df_final = df_final.ffill()
-    df_final = df_final.dropna() 
+    # 2. Extraer precios de cierre (Manejo robusto de MultiIndex)
+    # yfinance devuelve columnas como ('Close', 'GC=F') o simplemente 'GC=F' dependiendo de la versión
+    try:
+        # Intenta extraer nivel 'Close' si es MultiIndex
+        df_close = df_raw.xs('Close', level=0, axis=1)
+    except KeyError:
+        # Si falla, asume que ya son precios de cierre o estructura plana
+        df_close = df_raw['Close'] if 'Close' in df_raw else df_raw
 
-    # Renombramos a un formato fijo [Close, USD, Interest, Volume]
+    # 3. --- CORRECCIÓN CRÍTICA: ORDENAMIENTO EXPLÍCITO ---
+    # Forzamos el orden: [Oro, Dólar, Tasas]
+    # Así nos aseguramos de que la columna 0 SIEMPRE sea el objetivo (Oro)
+    df_close = df_close[[ticker, EX_TICKER_USA, EX_TICKER_RATE]]
+
+    # 4. Manejo del Volumen (Solo del activo principal)
+    # Buscamos 'Volume' de forma segura
+    try:
+        if isinstance(df_raw.columns, pd.MultiIndex):
+             # Intenta obtener el volumen solo del ticker principal
+             vol_series = df_raw.xs('Volume', level=0, axis=1)[ticker]
+        else:
+             vol_series = df_raw['Volume']
+    except KeyError:
+        # Si no hay volumen, creamos ceros para no romper el código
+        print("⚠️ No se encontró volumen, usando ceros.")
+        vol_series = pd.Series(0, index=df_close.index)
+
+    # 5. Concatenar y Limpiar
+    df_final = pd.concat([df_close, vol_series], axis=1)
+    
+    # Limpieza básica
+    df_final = df_final.ffill().dropna()
+
+    # Ahora sí podemos renombrar con seguridad porque forzamos el orden en el paso 3
+    # Orden esperado: [Ticker_Objetivo, Dolar, Tasas, Volumen]
     df_final.columns = ['Close_Price', 'USD_Index', 'Interest_Rate', 'Volume']
+    
+    # Reordenamos para mantener tu estándar: [Close, Volume, Interest, USD]
     df_final = df_final[['Close_Price', 'Volume', 'Interest_Rate', 'USD_Index']]
     
     return df_final.astype(float)
-
 # --------------------------------------------------------------------------
 
 class CommodityDataModule(pl.LightningDataModule):
