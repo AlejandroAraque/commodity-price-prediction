@@ -220,3 +220,4 @@ logs/
 
 # Ignorar datos descargados (si alguna vez guardas csv o excels)
 data/
+.DS_Store
