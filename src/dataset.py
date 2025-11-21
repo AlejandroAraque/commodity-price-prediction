@@ -5,12 +5,40 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+import pandas_ta_classic as ta
 import os
 import sys
 
+def _add_technical_indicators(df):
+    # Trabajamos sobre una copia para seguridad
+    df = df.copy()
+    
+    # 1. Medias Móviles (Tendencia)
+    # SMA 20: Tendencia a corto plazo (aprox. 1 mes de trading)
+    df['SMA_20'] = ta.sma(df['Close_Price'], length=20)
+    # SMA 50: Tendencia a medio plazo (aprox. 2.5 meses)
+    df['SMA_50'] = ta.sma(df['Close_Price'], length=50)
+
+    #2. RSI (FUERZA RELATIVA DEL INDICE)
+    df['RSI'] = ta.rsi(df['Close_Price'], length=14)
+
+    #3. MACD (distancia entre dos medias moviles, detecta cambios de tendencia)
+    macd = ta.macd(df['Close_Price']) # Devuelve tres columnas, 
+    if macd is not None:
+        df['MACD'] = macd['MACD_12_26_9']
+        df['MACD_Signal'] = macd['MACDs_12_26_9']
+    
+    # 4. Retornos Logarítmicos (Volatilidad)
+    # Ayuda al modelo a entender la magnitud del cambio diario
+    df['Log_Ret'] = np.log(df['Close_Price'] / df['Close_Price'].shift(1))
+
+
+
+    return df
+
 def _load_and_merge_data(ticker, start_date, end_date):
     """
-    Descarga el activo principal y las variables exógenas, asegurando el orden correcto.
+    Descarga el activo principal y las variables, asegurando el orden correcto.
     """
     # Definimos explícitamente los tickers extra
     EX_TICKER_USA = 'DX-Y.NYB' # Dólar
@@ -32,8 +60,7 @@ def _load_and_merge_data(ticker, start_date, end_date):
         # Si falla, asume que ya son precios de cierre o estructura plana
         df_close = df_raw['Close'] if 'Close' in df_raw else df_raw
 
-    # 3. --- CORRECCIÓN CRÍTICA: ORDENAMIENTO EXPLÍCITO ---
-    # Forzamos el orden: [Oro, Dólar, Tasas]
+    # 3. FORZAMOS EL ORDEN: [Oro, Dólar, Tasas]
     # Así nos aseguramos de que la columna 0 SIEMPRE sea el objetivo (Oro)
     df_close = df_close[[ticker, EX_TICKER_USA, EX_TICKER_RATE]]
 
@@ -59,7 +86,11 @@ def _load_and_merge_data(ticker, start_date, end_date):
     # Ahora sí podemos renombrar con seguridad porque forzamos el orden en el paso 3
     # Orden esperado: [Ticker_Objetivo, Dolar, Tasas, Volumen]
     df_final.columns = ['Close_Price', 'USD_Index', 'Interest_Rate', 'Volume']
-    
+
+    # --- 4. INGENIERÍA DE CARACTERÍSTICAS (Fase 2.1) ---
+    print("📈 Calculando indicadores técnicos (SMA, RSI, MACD)...")
+    df_final = _add_technical_indicators(df_final)
+
     # Reordenamos para mantener tu estándar: [Close, Volume, Interest, USD]
     df_final = df_final[['Close_Price', 'Volume', 'Interest_Rate', 'USD_Index']]
     

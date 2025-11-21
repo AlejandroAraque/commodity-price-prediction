@@ -7,8 +7,10 @@ from model import LSTMRegressor
 
 # --- CONFIGURACIÓN ---
 # Asegúrate de que este nombre coincida EXACTAMENTE con el archivo que se creó en tu carpeta checkpoints/
-# Por ejemplo: 'checkpoints/LSTM-best-val-v1.ckpt' (revisa tu carpeta si tienes v1, v2...)
-CHECKPOINT_PATH = "checkpoints/LSTM-best-val.ckpt" 
+CHECKPOINT_PATH = "checkpoints/LSTM_V2_log-best-val.ckpt" 
+# 2. Generamos el nombre de la imagen automáticamente
+image_name = os.path.basename(CHECKPOINT_PATH).replace(".ckpt", ".png")
+
 TICKER = "GC=F" # Oro
 
 def main():
@@ -93,8 +95,8 @@ def main():
     plt.grid(True, alpha=0.3)
     
     # Guardamos la imagen por si no se abre ventana
-    plt.savefig("resultado_prediccion.png")
-    print("✅ Gráfica guardada como 'resultado_prediccion.png'")
+    plt.savefig(image_name)
+    print(f"✅ Gráfica guardada como '{image_name}'")
     plt.show()
 
     # Visualizar solo los últimos 50 días

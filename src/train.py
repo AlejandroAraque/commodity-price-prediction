@@ -58,11 +58,12 @@ def main(args):
     )
 
     # 5. Callbacks (Asistentes de entrenamiento)
-    
+    # Si he puesto un nombre de experimento (--exp_name), úsalo. Si no, usa el nombre del modelo.
+    experiment_name = args.exp_name if args.exp_name else args.model_name
     # Checkpoint (Guarda el mejor modelo)
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath='checkpoints',
-        filename=f"{args.model_name}-best-val",
+        filename=f"{experiment_name}-best-val", 
         save_top_k=1,
         monitor='val_loss',
         mode='min'
@@ -78,7 +79,7 @@ def main(args):
     # Logger (Usamos CSVLogger para guardar las métricas de forma simple)
     logger = pl.loggers.CSVLogger(
         save_dir="logs", 
-        name=f"exp_{args.model_name}_{args.ticker}"
+        name=f"exp_{experiment_name}_{args.ticker}" 
     )
 
     # 6. Entrenador (Trainer).       
@@ -109,7 +110,7 @@ if __name__ == "__main__":
     
     # Configuración del Modelo (Permite el cambio entre arquitecturas)
     parser.add_argument('--model_name', type=str, default='LSTM', choices=['LSTM', 'GRU'], help='Nombre del modelo a usar.')
-    parser.add_argument('--input_size', type=int, default=4, help='Número de features (columnas) de entrada.')
+    parser.add_argument('--input_size', type=int, default=10, help='Número de features (columnas) de entrada.')
     
     # Hiperparámetros [cite: 260]
     parser.add_argument('--hidden_size', type=int, default=64, help='Neuronas en capa oculta LSTM/GRU.')
@@ -124,5 +125,8 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=50, help='Número máximo de épocas.')
     parser.add_argument('--seed', type=int, default=42, help='Semilla aleatoria para reproducibilidad[cite: 221].')
 
+    # --- NUEVO: Argumento para nombrar el archivo de salida ---
+    parser.add_argument('--exp_name', type=str, default=None, help='Nombre opcional para guardar checkpoints y logs.')
+    
     args = parser.parse_args()
     main(args)
