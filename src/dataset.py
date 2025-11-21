@@ -32,8 +32,6 @@ def _add_technical_indicators(df):
     # Ayuda al modelo a entender la magnitud del cambio diario
     df['Log_Ret'] = np.log(df['Close_Price'] / df['Close_Price'].shift(1))
 
-
-
     return df
 
 def _load_and_merge_data(ticker, start_date, end_date):
@@ -43,8 +41,9 @@ def _load_and_merge_data(ticker, start_date, end_date):
     # Definimos explícitamente los tickers extra
     EX_TICKER_USA = 'DX-Y.NYB' # Dólar
     EX_TICKER_RATE = '^TNX'    # Tipos de Interés
+    EX_TICKER_VIX = '^VIX'  # <--- CAMBIO 1: Añadido VIX
     
-    ALL_TICKERS = [ticker, EX_TICKER_USA, EX_TICKER_RATE]
+    ALL_TICKERS = [ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX]
     
     print(f"📥 Descargando: {ALL_TICKERS}")
     
@@ -62,7 +61,7 @@ def _load_and_merge_data(ticker, start_date, end_date):
 
     # 3. FORZAMOS EL ORDEN: [Oro, Dólar, Tasas]
     # Así nos aseguramos de que la columna 0 SIEMPRE sea el objetivo (Oro)
-    df_close = df_close[[ticker, EX_TICKER_USA, EX_TICKER_RATE]]
+    df_close = df_close[[ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX]]
 
     # 4. Manejo del Volumen (Solo del activo principal)
     # Buscamos 'Volume' de forma segura
@@ -85,21 +84,36 @@ def _load_and_merge_data(ticker, start_date, end_date):
 
     # Ahora sí podemos renombrar con seguridad porque forzamos el orden en el paso 3
     # Orden esperado: [Ticker_Objetivo, Dolar, Tasas, Volumen]
-    df_final.columns = ['Close_Price', 'USD_Index', 'Interest_Rate', 'Volume']
+    df_final.columns = ['Close_Price', 'USD_Index', 'Interest_Rate', 'VIX', 'Volume']
 
     # --- 4. INGENIERÍA DE CARACTERÍSTICAS (Fase 2.1) ---
     print("📈 Calculando indicadores técnicos (SMA, RSI, MACD)...")
     df_final = _add_technical_indicators(df_final)
 
-    # Reordenamos para mantener tu estándar: [Close, Volume, Interest, USD]
-    df_final = df_final[['Close_Price', 'Volume', 'Interest_Rate', 'USD_Index']]
+    
+    # --- LIMPIEZA ROBUSTA (FIX NAN) ---
+    # 1. Convertir Infinitos a NaN (Crítico para Log Returns)
+    df_final = df_final.replace([np.inf, -np.inf], np.nan)
+    
+    # 2. Borrar NaNs
+    df_final = df_final.dropna()
+    
+    # --- SELECCIÓN DE COLUMNAS ---
+    cols = [
+        'Log_Ret',        # TARGET (Posición 0)
+        'Volume', 'Interest_Rate', 'USD_Index', 'VIX', # Macroeconomía
+        'SMA_20', 'SMA_50', 'RSI', 'MACD', 'MACD_Signal' # Técnico
+    ]
+    
+    df_final = df_final[cols]
     
     return df_final.astype(float)
 # --------------------------------------------------------------------------
 
 class CommodityDataModule(pl.LightningDataModule):
     def __init__(self, ticker="GC=F", start_date="2015-01-01", end_date="2024-12-31", 
-                 window_size=30, batch_size=32, split_ratio=0.8):
+                 window_size=30, batch_size=32, split_ratio=0.8, 
+                 prediction_horizon=1):
         super().__init__()
         self.save_hyperparameters() 
         self.scaler = MinMaxScaler(feature_range=(0, 1))
@@ -121,10 +135,16 @@ class CommodityDataModule(pl.LightningDataModule):
         Y es solo la primera columna (Close_Price).
         """
         X, y = [], []
-        for i in range(len(data) - self.hparams.window_size):
+        # Ajustamos el rango del bucle para no salirnos del array al mirar al futuro
+        horizon = self.hparams.prediction_horizon
+        # CAMBIO 4: Lógica de secuencias con horizonte
+        for i in range(len(data) - self.hparams.window_size - horizon + 1):
+            # Input: Ventana de 30 días
             window = data[i : i + self.hparams.window_size]
-            # Target es solo el valor de precio (columna 0) del día siguiente.
-            target = data[i + self.hparams.window_size] 
+            
+            # Output: El dato que está 'horizon' días después del final de la ventana
+            target_idx = i + self.hparams.window_size + horizon - 1
+            target = data[target_idx, 0] # Columna 0 es Log_Ret
             
             X.append(window)
             y.append(target)
@@ -159,8 +179,8 @@ class CommodityDataModule(pl.LightningDataModule):
         X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
         
         # Y: (Muestras, 1) -- Seleccionamos solo la primera columna (Close Price)
-        y_train_tensor = torch.tensor(y_train[:, 0], dtype=torch.float32).unsqueeze(1)
-        y_test_tensor = torch.tensor(y_test[:, 0], dtype=torch.float32).unsqueeze(1)
+        y_train_tensor = torch.tensor(y_train, dtype=torch.float32).unsqueeze(1)
+        y_test_tensor = torch.tensor(y_test, dtype=torch.float32).unsqueeze(1)
         
         self.train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
         self.test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
@@ -173,12 +193,12 @@ class CommodityDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         # El repartidor que entrega los lotes de entrenamiento (barajados para evitar sesgos)
         # num_workers=4 permite cargar datos en paralelo mientras la CPU entrena
-        return DataLoader(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=True, num_workers=2, persistent_workers=True)
+        return DataLoader(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=True, num_workers=0)
 
     def val_dataloader(self):
         # El repartidor que entrega los lotes de validación (no se baraja)
-        return DataLoader(self.test_dataset, batch_size=self.hparams.batch_size, shuffle=False, num_workers=2, persistent_workers=True)
+        return DataLoader(self.test_dataset, batch_size=self.hparams.batch_size, shuffle=False, num_workers=0)
 
     def test_dataloader(self):
         # El repartidor que entrega el set final de prueba (no se baraja)
-        return DataLoader(self.test_dataset, batch_size=self.hparams.batch_size, shuffle=False, num_workers=2, persistent_workers=True)
+        return DataLoader(self.test_dataset, batch_size=self.hparams.batch_size, shuffle=False, num_workers=0)

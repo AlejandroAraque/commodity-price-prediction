@@ -13,7 +13,6 @@ class LSTMRegressor(pl.LightningModule):
             self.hparams # Pasamos todos los parámetros guardados
         )
         
-        # ... el resto del init es igual ...
         self.criterion = nn.MSELoss()
 
     def forward(self, x):
@@ -54,7 +53,6 @@ class LSTMRegressor(pl.LightningModule):
             return torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate, weight_decay=1e-5)
 
 def create_lstm_model(input_size: int, hidden_size: int, num_layers: int, dropout: float):
-    # (El código de la LSTM es el mismo)
     lstm = nn.LSTM(
         input_size=input_size, hidden_size=hidden_size, num_layers=num_layers,
         dropout=dropout if num_layers > 1 else 0, batch_first=True
@@ -62,7 +60,6 @@ def create_lstm_model(input_size: int, hidden_size: int, num_layers: int, dropou
     return lstm, nn.Linear(hidden_size, 1)
 
 def create_gru_model(input_size: int, hidden_size: int, num_layers: int, dropout: float):
-    # (La arquitectura de la GRU es casi idéntica a la LSTM)
     gru = nn.GRU(
         input_size=input_size, hidden_size=hidden_size, num_layers=num_layers,
         dropout=dropout if num_layers > 1 else 0, batch_first=True

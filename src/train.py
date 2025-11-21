@@ -6,17 +6,11 @@ import sys
 import random
 import numpy as np
 
-# Asegura que Python encuentre las clases dentro de src/
-# Aunque en la terminal activa ya funciona, es una buena práctica:
-# sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-# Importamos las piezas creadas
 from dataset import CommodityDataModule
 from model import LSTMRegressor
 
 # --------------------------------------------------------------------------
-# --- FUNCIÓN DE REPRODUCIBILIDAD (GOOD PRACTICE) [cite: 221] ---
-# --------------------------------------------------------------------------
+# --- FUNCIÓN DE REPRODUCIBILIDAD  ---
 def set_seed(seed):
     """Fija todas las semillas de aleatoriedad para la reproducibilidad."""
     random.seed(seed)
@@ -31,7 +25,7 @@ def set_seed(seed):
         torch.backends.cudnn.benchmark = False
 
 def main(args):
-    # 1. Fijar Semillas [cite: 221]
+    # 1. Fijar Semillas 
     set_seed(args.seed)
 
     # 2. Configurar Datos (Carga y Preprocesamiento)
@@ -39,7 +33,8 @@ def main(args):
         ticker=args.ticker,
         window_size=args.window_size,
         batch_size=args.batch_size,
-        split_ratio=0.8
+        split_ratio=0.8,
+        prediction_horizon=args.prediction_horizon  
     )
     
     # 3. Descargar y Procesar Datos (Llama a prepare_data y setup)
@@ -90,7 +85,8 @@ def main(args):
         callbacks=[checkpoint_callback, early_stopping_callback],
         logger=logger,
         enable_progress_bar=True,
-        log_every_n_steps=5
+        log_every_n_steps=5,
+        gradient_clip_val=1.0
     )
 
     # 7. ¡Entrenar!
@@ -98,21 +94,20 @@ def main(args):
     # Internamente Descarga y Procesa los Datos llamando a: dm.prepare_data() y dm.setup()  
     trainer.fit(model, dm)
     
-    # 8. Test final con el mejor checkpoint guardado [cite: 266]
+    # 8. Test final con el mejor checkpoint guardado 
     print("\n✅ Evaluando el mejor checkpoint en el conjunto de test...")
     trainer.test(model, dm, ckpt_path='best')
 
 if __name__ == "__main__":
     # ----------------------------------------------------------------------
     # --- Argument Parser (Hyperparameter Management)  ---
-    # ----------------------------------------------------------------------
     parser = argparse.ArgumentParser(description='Entrenamiento de Modelo de Predicción de Commodities')
     
     # Configuración del Modelo (Permite el cambio entre arquitecturas)
     parser.add_argument('--model_name', type=str, default='LSTM', choices=['LSTM', 'GRU'], help='Nombre del modelo a usar.')
     parser.add_argument('--input_size', type=int, default=10, help='Número de features (columnas) de entrada.')
     
-    # Hiperparámetros [cite: 260]
+    # Hiperparámetros
     parser.add_argument('--hidden_size', type=int, default=64, help='Neuronas en capa oculta LSTM/GRU.')
     parser.add_argument('--num_layers', type=int, default=2, help='Número de capas de la RNN.')
     parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate para regularización[cite: 59].')
@@ -127,6 +122,7 @@ if __name__ == "__main__":
 
     # --- NUEVO: Argumento para nombrar el archivo de salida ---
     parser.add_argument('--exp_name', type=str, default=None, help='Nombre opcional para guardar checkpoints y logs.')
-    
+    parser.add_argument('--prediction_horizon', type=int, default=1, help='Días a futuro a predecir.')
+
     args = parser.parse_args()
     main(args)
