@@ -105,7 +105,7 @@ if __name__ == "__main__":
     
     # Configuración del Modelo (Permite el cambio entre arquitecturas)
     parser.add_argument('--model_name', type=str, default='LSTM', choices=['LSTM', 'GRU'], help='Nombre del modelo a usar.')
-    parser.add_argument('--input_size', type=int, default=10, help='Número de features (columnas) de entrada.')
+    parser.add_argument('--input_size', type=int, default=19, help='Número de features (columnas) de entrada.')
     
     # Hiperparámetros
     parser.add_argument('--hidden_size', type=int, default=64, help='Neuronas en capa oculta LSTM/GRU.')

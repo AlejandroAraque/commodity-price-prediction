@@ -8,74 +8,70 @@ import pandas_ta_classic as ta
 from dataset import CommodityDataModule
 from model import LSTMRegressor
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN V5 ---
 CHECKPOINT_FOLDER = "checkpoints"
 TICKER = "GC=F"
-HORIZON = 3 
-IMAGE_NAME = "realidad_cruda_v4.png"
+HORIZON = 3   # Mismo horizonte que entrenaste
+IMAGE_NAME = "resultado_v5_lags.png"
 
 def find_best_checkpoint():
-    # Busca el checkpoint V4 más reciente
-    files = [f for f in os.listdir(CHECKPOINT_FOLDER) if "V4" in f and f.endswith(".ckpt")]
+    # Buscamos checkpoints que contengan "V5" (o el nombre que le pusiste al exp_name)
+    files = [f for f in os.listdir(CHECKPOINT_FOLDER) if "V5" in f and f.endswith(".ckpt")]
     if not files:
-        raise FileNotFoundError("❌ No encuentro checkpoints V4. ¿Has entrenado con --exp_name LSTM_V4...?")
+        # Si no encuentra V5, coge el último modificado (fallback)
+        print("⚠️ No encontré 'V5' en el nombre, buscando el más reciente...")
+        files = [f for f in os.listdir(CHECKPOINT_FOLDER) if f.endswith(".ckpt")]
+        
+    if not files:
+        raise FileNotFoundError("❌ No hay checkpoints.")
+        
     files.sort(key=lambda x: os.path.getmtime(os.path.join(CHECKPOINT_FOLDER, x)))
     return os.path.join(CHECKPOINT_FOLDER, files[-1])
 
 def get_aligned_prices_and_data():
     """
-    Réplica EXACTA de la lógica de dataset.py para asegurar que las fechas coinciden.
-    Devuelve tanto los precios brutos como el tamaño de los datos procesados.
+    RÉPLICA EXACTA de dataset.py para asegurar alineación de filas.
     """
-    print("💰 Descargando y procesando datos (Réplica exacta del entrenamiento)...")
+    print("💰 Descargando y procesando datos (V5 - Con Lags)...")
     
-    # 1. Mismos Tickers que en dataset.py
-    EX_TICKER_USA = 'DX-Y.NYB' 
-    EX_TICKER_RATE = '^TNX'
-    EX_TICKER_VIX = '^VIX'
-    ALL_TICKERS = [TICKER, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX]
+    # 1. Mismos Tickers
+    ALL_TICKERS = [TICKER, 'DX-Y.NYB', '^TNX', '^VIX']
     
     # 2. Descarga
     df_raw = yf.download(ALL_TICKERS, start="2015-01-01", end="2024-12-31", interval="1d", auto_adjust=True, progress=False)
 
-    # 3. Limpieza y Fusión (Idéntico a dataset.py)
     try:
         df_close = df_raw.xs('Close', level=0, axis=1)
     except KeyError:
-        df_close = df_raw['Close'] if 'Close' in df_raw else df_raw
+        df_close = df_raw['Close']
 
-    # Asegurar orden
-    df_close = df_close[[TICKER, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX]]
+    # Asegurar columnas necesarias para indicadores
+    df_final = df_close.copy()
+    # Renombramos para que pandas_ta funcione
+    if TICKER in df_final.columns:
+        df_final['Close_Price'] = df_final[TICKER]
+    else:
+        # Fallback por si la estructura cambia
+        df_final['Close_Price'] = df_final.iloc[:, 0]
 
-    # Volumen
-    try:
-        if isinstance(df_raw.columns, pd.MultiIndex):
-             vol_series = df_raw.xs('Volume', level=0, axis=1)[TICKER]
-        else:
-             vol_series = df_raw['Volume']
-    except KeyError:
-        vol_series = pd.Series(0, index=df_close.index)
-
-    df_final = pd.concat([df_close, vol_series], axis=1)
-    df_final.columns = ['Close_Price', 'USD_Index', 'Interest_Rate', 'VIX', 'Volume']
-    
-    # 4. Indicadores (Necesarios porque generan NaNs que eliminan filas)
-    # Calculamos todo para que el dropna() elimine EXACTAMENTE las mismas filas que en train
+    # 3. INDICADORES (Necesarios para generar los mismos NaNs)
     df_final['SMA_20'] = ta.sma(df_final['Close_Price'], length=20)
     df_final['SMA_50'] = ta.sma(df_final['Close_Price'], length=50)
     df_final['RSI'] = ta.rsi(df_final['Close_Price'], length=14)
-    macd = ta.macd(df_final['Close_Price'])
-    if macd is not None:
-        df_final['MACD'] = macd['MACD_12_26_9']
-        df_final['MACD_Signal'] = macd['MACDs_12_26_9']
     df_final['Log_Ret'] = np.log(df_final['Close_Price'] / df_final['Close_Price'].shift(1))
     
-    # 5. LIMPIEZA ROBUSTA (La clave del alineamiento)
-    # Guardamos el precio antes de filtrar, pero aplicamos el índice filtrado
+    # 4. LAGGED FEATURES (CRÍTICO: Esto elimina más filas al inicio)
+    lags = [1, 3, 5]
+    for lag in lags:
+        # Solo necesitamos calcularlos para que el dropna() posterior sea idéntico al del training
+        df_final[f'Log_Ret_Lag_{lag}'] = df_final['Log_Ret'].shift(lag)
+        df_final[f'SMA_50_Lag_{lag}'] = df_final['SMA_50'].shift(lag)
+        df_final[f'RSI_Lag_{lag}'] = df_final['RSI'].shift(lag)
+    
+    # 5. LIMPIEZA IDÉNTICA
     df_clean = df_final.replace([np.inf, -np.inf], np.nan).dropna()
     
-    # Devolvemos solo la columna de precios del DF limpio
-    # Así garantizamos que tiene la misma longitud e índices que lo que vio el modelo
+    # Devolvemos solo los precios alineados
     return df_clean['Close_Price'].values
 
 def main():
@@ -86,12 +82,12 @@ def main():
     model.eval()
     model.freeze()
 
-    # Usamos el DataModule solo para cargar los datos de TEST transformados
+    # DataModule usará el dataset.py actualizado (que ya tiene 19 columnas)
     dm = CommodityDataModule(ticker=TICKER, split_ratio=0.8, prediction_horizon=HORIZON)
     dm.prepare_data()
     dm.setup()
 
-    # Obtener Predicciones del modelo
+    # Predicciones
     test_loader = dm.test_dataloader()
     predictions = []
     for batch in test_loader:
@@ -101,61 +97,53 @@ def main():
 
     pred_scaled = np.concatenate(predictions).flatten()
 
-    # Des-escalar Log Returns
+    # Des-escalar (Ojo: El scaler ahora espera 19 columnas)
     scaler = dm.scaler
-    num_features = scaler.min_.shape[0]
-    
+    num_features = scaler.min_.shape[0] # Debería ser 19
+    print(f"ℹ️  El modelo usa {num_features} características.")
+
     def unscale_log_returns(scaled_data):
         dummy = np.zeros((len(scaled_data), num_features))
-        dummy[:, 0] = scaled_data
+        dummy[:, 0] = scaled_data # Log_Ret sigue siendo la columna 0
         return scaler.inverse_transform(dummy)[:, 0]
 
     pred_log_ret = unscale_log_returns(pred_scaled)
 
-    # --- RECONSTRUCCIÓN "REALIDAD CRUDA" ---
-    # Obtenemos los precios alineados perfectamente
+    # --- RECONSTRUCCIÓN ---
     all_prices = get_aligned_prices_and_data()
     
-    # Índices de corte (Misma lógica que dataset.py)
     split_idx = int(len(dm.raw_data) * 0.8)
     window_size = dm.hparams.window_size
     
-    # El punto donde empieza a predecir el modelo
     start_predict_idx = split_idx + window_size
     
-    # PRECIO BASE (T): El último dato REAL que vio la ventana
-    # Índice: start - 1
+    # PRECIO BASE (T)
     base_start = start_predict_idx - 1
     base_end = base_start + len(pred_log_ret)
     
-    # Verificación de seguridad de índices
+    # Ajuste de longitud
     if base_end > len(all_prices):
-        # Si por algún motivo de redondeo sobra un dato, recortamos
         diff = base_end - len(all_prices)
         pred_log_ret = pred_log_ret[:-diff]
         base_end = len(all_prices)
 
     base_prices_T = all_prices[base_start : base_end]
     
-    # PRECIO OBJETIVO REAL (T+Horizonte)
-    # Queremos comparar nuestra proyección con lo que pasó 3 días después
+    # TARGET REAL (T+Horizon)
     target_start = start_predict_idx + HORIZON - 1
     target_end = target_start + len(pred_log_ret)
     
-    # Ajuste de seguridad para el target
     if target_end > len(all_prices):
         cutoff = target_end - len(all_prices)
-        # Recortamos todo para que coincida
         base_prices_T = base_prices_T[:-cutoff]
         pred_log_ret = pred_log_ret[:-cutoff]
         target_end = len(all_prices)
         
     real_prices_target = all_prices[target_start : target_end]
 
-    print(f"📊 Generando gráfica honesta ({len(base_prices_T)} días)...")
+    print(f"📊 Generando gráfica V5 (Lags)...")
 
-    # FÓRMULA PROYECCIÓN: Precio_T * exp(Pred_Retorno)
-    # Esto simula: "Estoy en T, predigo que en T+3 el precio habrá cambiado X%"
+    # PROYECCIÓN
     pred_prices_projected = base_prices_T * np.exp(pred_log_ret)
 
     # Graficar
@@ -163,9 +151,9 @@ def main():
     plt.figure(figsize=(14, 7))
     
     plt.plot(real_prices_target[-ZOOM:], label=f'Precio Real (T+{HORIZON})', color='navy', linewidth=2, marker='o', markersize=4, alpha=0.5)
-    plt.plot(pred_prices_projected[-ZOOM:], label=f'Proyección desde T', color='crimson', linestyle='--', linewidth=2, marker='x', markersize=6)
+    plt.plot(pred_prices_projected[-ZOOM:], label=f'Predicción V5 (Con Memoria)', color='crimson', linestyle='--', linewidth=2, marker='x', markersize=6)
     
-    plt.title(f"Prueba de Fuego V4: Proyección a {HORIZON} días vs Realidad", fontsize=16)
+    plt.title(f"Modelo V5 (Lags + Horizonte {HORIZON}): ¿Anticipación?", fontsize=16)
     plt.xlabel("Días", fontsize=12)
     plt.ylabel("Precio (USD)", fontsize=12)
     plt.legend(fontsize=12)

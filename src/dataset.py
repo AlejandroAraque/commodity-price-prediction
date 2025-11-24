@@ -32,6 +32,17 @@ def _add_technical_indicators(df):
     # Ayuda al modelo a entender la magnitud del cambio diario
     df['Log_Ret'] = np.log(df['Close_Price'] / df['Close_Price'].shift(1))
 
+  #  5. Nuevas columnas con lags
+    lags = [1, 3, 5] # Miramos ayer, hace 3 días y hace 5 días
+    for i in lags:
+        # Lag del Retorno (Velocidad pasada)
+        df[f'Log_Ret_Lag_{i}'] = df['Log_Ret'].shift(i)
+        
+        # Lag de la Tendencia (¿Dónde estaba la media móvil?)
+        df[f'SMA_50_Lag_{i}'] = df['SMA_50'].shift(i)
+        
+        # Lag del RSI (¿Estaba sobrecomprado?)
+        df[f'RSI_Lag_{i}'] = df['RSI'].shift(i)
     return df
 
 def _load_and_merge_data(ticker, start_date, end_date):
@@ -102,9 +113,15 @@ def _load_and_merge_data(ticker, start_date, end_date):
     cols = [
         'Log_Ret',        # TARGET (Posición 0)
         'Volume', 'Interest_Rate', 'USD_Index', 'VIX', # Macroeconomía
-        'SMA_20', 'SMA_50', 'RSI', 'MACD', 'MACD_Signal' # Técnico
+        'SMA_20', 'SMA_50', 'RSI', 'MACD', 'MACD_Signal'  # Técnico
     ]
-    
+
+    for i in [1, 3, 5]:
+        cols.append(f'Log_Ret_Lag_{i}')
+        cols.append(f'SMA_50_Lag_{i}')
+        cols.append(f'RSI_Lag_{i}')
+
+        
     df_final = df_final[cols]
     
     return df_final.astype(float)
@@ -153,7 +170,7 @@ class CommodityDataModule(pl.LightningDataModule):
     
     def setup(self, stage=None):
         """
-        Procesa los datos: Normaliza las 4 columnas y crea las ventanas.
+        Procesa los datos: Normaliza las columnas y crea las ventanas.
         """
         # A. Split y Normalización
         split_idx = int(len(self.raw_data) * self.hparams.split_ratio)
