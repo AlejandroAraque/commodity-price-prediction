@@ -12,8 +12,8 @@ from model import LSTMRegressor
 CHECKPOINT_FOLDER = "checkpoints"
 TICKER = "GC=F"
 HORIZON = 1   # Mismo horizonte que entrenaste
-SEARCH_TAG = "V6" 
-IMAGE_NAME = "resultado_v6_cnn.png"
+SEARCH_TAG = "V7" 
+IMAGE_NAME = "resultado_v7.png"
 
 def find_best_checkpoint():
     # Usamos la variable SEARCH_TAG
@@ -41,7 +41,7 @@ def get_aligned_prices_and_data():
     ALL_TICKERS = [TICKER, 'DX-Y.NYB', '^TNX', '^VIX']
     
     # 2. Descarga
-    df_raw = yf.download(ALL_TICKERS, start="2015-01-01", end="2024-12-31", interval="1d", auto_adjust=True, progress=False)
+    df_raw = yf.download(ALL_TICKERS, start="2000-01-01", end="2024-12-31", interval="1d", auto_adjust=True, progress=False)
 
     try:
         df_close = df_raw.xs('Close', level=0, axis=1)
@@ -58,18 +58,18 @@ def get_aligned_prices_and_data():
         df_final['Close_Price'] = df_final.iloc[:, 0]
 
     # 3. INDICADORES (Necesarios para generar los mismos NaNs)
-    df_final['SMA_20'] = ta.sma(df_final['Close_Price'], length=20)
-    df_final['SMA_50'] = ta.sma(df_final['Close_Price'], length=50)
-    df_final['RSI'] = ta.rsi(df_final['Close_Price'], length=14)
+    #df_final['SMA_20'] = ta.sma(df_final['Close_Price'], length=20)
+    #df_final['SMA_50'] = ta.sma(df_final['Close_Price'], length=50)
+    #df_final['RSI'] = ta.rsi(df_final['Close_Price'], length=14)
     df_final['Log_Ret'] = np.log(df_final['Close_Price'] / df_final['Close_Price'].shift(1))
     
-    # 4. LAGGED FEATURES (CRÍTICO: Esto elimina más filas al inicio)
+    """# 4. LAGGED FEATURES (CRÍTICO: Esto elimina más filas al inicio)
     lags = [1, 3, 5]
     for lag in lags:
         # Solo necesitamos calcularlos para que el dropna() posterior sea idéntico al del training
         df_final[f'Log_Ret_Lag_{lag}'] = df_final['Log_Ret'].shift(lag)
-        df_final[f'SMA_50_Lag_{lag}'] = df_final['SMA_50'].shift(lag)
-        df_final[f'RSI_Lag_{lag}'] = df_final['RSI'].shift(lag)
+        #df_final[f'SMA_50_Lag_{lag}'] = df_final['SMA_50'].shift(lag)
+        df_final[f'RSI_Lag_{lag}'] = df_final['RSI'].shift(lag)"""
     
     # 5. LIMPIEZA IDÉNTICA
     df_clean = df_final.replace([np.inf, -np.inf], np.nan).dropna()
@@ -156,7 +156,7 @@ def main():
     plt.plot(real_prices_target[-ZOOM:], label=f'Precio Real (T+{HORIZON})', color='navy', linewidth=2, marker='o', markersize=4, alpha=0.5)
     plt.plot(pred_prices_projected[-ZOOM:], label=f'Predicción V5 (Con Memoria)', color='crimson', linestyle='--', linewidth=2, marker='x', markersize=6)
     
-    plt.title(f"Modelo V5 (Lags + Horizonte {HORIZON}): ¿Anticipación?", fontsize=16)
+    plt.title(f"Modelo V7 (featurest eliminated Lags + Horizonte {HORIZON}): ¿Anticipación?", fontsize=16)
     plt.xlabel("Días", fontsize=12)
     plt.ylabel("Precio (USD)", fontsize=12)
     plt.legend(fontsize=12)

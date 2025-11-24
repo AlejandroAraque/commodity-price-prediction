@@ -2,6 +2,58 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
+class DirectionalMSELoss(nn.Module):
+    def __init__(self, penalty_factor=10.0, stagnation_penalty=0.1):
+        super().__init__()
+        self.mse = nn.MSELoss(reduction='none') 
+        self.penalty_factor = penalty_factor
+        self.stagnation_penalty = stagnation_penalty # <--- NUEVO PARÁMETRO
+
+    def forward(self, y_pred, y_true):
+        # 1. Error base (MSE)
+        loss = self.mse(y_pred, y_true)
+        
+        # 2. Penalización por Dirección Incorrecta
+        direction_match = torch.sign(y_pred) * torch.sign(y_true)
+        dir_penalty = torch.where(direction_match < 0, self.penalty_factor, 1.0)
+        
+        # 3. NUEVO: Penalización por "Flatline" (Predecir 0)
+        # Usamos una exponencial negativa: 
+        # Si y_pred es 0 -> exp(0) = 1 (Castigo máximo)
+        # Si y_pred es +/- 0.05 -> exp(-5) = 0.006 (Castigo casi nulo)
+        # Multiplicamos por 100 para que la curva sea muy picuda cerca del 0
+        flat_penalty = torch.exp(-torch.abs(y_pred) * 100) * self.stagnation_penalty
+        
+        # Combinamos todo
+        # Error Total = (MSE * CastigoDirección) + CastigoEstancamiento
+        total_loss = (loss * dir_penalty) + flat_penalty
+        
+        return torch.mean(total_loss)
+
+class DirectionalMSELoss(nn.Module):
+    def __init__(self, penalty_factor=5.0):
+        super().__init__()
+        self.mse = nn.MSELoss(reduction='none') # 'none' es vital para poder operar fila a fila
+        self.penalty_factor = penalty_factor
+
+    def forward(self, y_pred, y_true):
+        # 1. Calculamos el error cuadrático normal (MSE)
+        loss = self.mse(y_pred, y_true)
+        
+        # 2. Detectamos si la dirección es correcta
+        # torch.sign devuelve: 1 (positivo), -1 (negativo) o 0
+        # Si (signo_pred * signo_real) > 0 -> Coinciden (Bien)
+        # Si (signo_pred * signo_real) < 0 -> Difieren (Mal)
+        direction_match = torch.sign(y_pred) * torch.sign(y_true)
+        
+        # 3. Aplicamos el castigo
+        # Si falló la dirección, multiplicamos el error por 10 (penalty_factor)
+        # Si acertó, multiplicamos por 1 (lo dejamos igual)
+        penalty = torch.where(direction_match < 0, self.penalty_factor, 1.0)
+        
+        # 4. Devolvemos la media del error castigado
+        return torch.mean(loss * penalty)
+    
 # --- 1. BLOQUE ESPECIAL PARA CNN-LSTM ---
 # Necesitamos esto porque nn.Sequential no sabe girar dimensiones
 class CNNLSTM_Block(nn.Module):
@@ -59,7 +111,9 @@ class LSTMRegressor(pl.LightningModule):
             self.hparams
         )
         
-        self.criterion = nn.MSELoss()
+        #self.criterion = DirectionalMSELoss(penalty_factor=10.0)
+        #self.criterion = nn.MSELoss()
+        self.criterion = DirectionalMSELoss(penalty_factor=10.0, stagnation_penalty=0.5)
 
     def forward(self, x):
         # Paso 1: Procesar secuencia (LSTM, GRU o CNN-LSTM)

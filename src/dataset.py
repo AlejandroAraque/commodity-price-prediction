@@ -15,9 +15,9 @@ def _add_technical_indicators(df):
     
     # 1. Medias Móviles (Tendencia)
     # SMA 20: Tendencia a corto plazo (aprox. 1 mes de trading)
-    df['SMA_20'] = ta.sma(df['Close_Price'], length=20)
+    #df['SMA_20'] = ta.sma(df['Close_Price'], length=20)
     # SMA 50: Tendencia a medio plazo (aprox. 2.5 meses)
-    df['SMA_50'] = ta.sma(df['Close_Price'], length=50)
+    #df['SMA_50'] = ta.sma(df['Close_Price'], length=50)
 
     #2. RSI (FUERZA RELATIVA DEL INDICE)
     df['RSI'] = ta.rsi(df['Close_Price'], length=14)
@@ -34,15 +34,15 @@ def _add_technical_indicators(df):
 
   #  5. Nuevas columnas con lags
     lags = [1, 3, 5] # Miramos ayer, hace 3 días y hace 5 días
-    for i in lags:
+    #for i in lags:
         # Lag del Retorno (Velocidad pasada)
-        df[f'Log_Ret_Lag_{i}'] = df['Log_Ret'].shift(i)
+        #df[f'Log_Ret_Lag_{i}'] = df['Log_Ret'].shift(i)
         
         # Lag de la Tendencia (¿Dónde estaba la media móvil?)
-        df[f'SMA_50_Lag_{i}'] = df['SMA_50'].shift(i)
+        #df[f'SMA_50_Lag_{i}'] = df['SMA_50'].shift(i)
         
         # Lag del RSI (¿Estaba sobrecomprado?)
-        df[f'RSI_Lag_{i}'] = df['RSI'].shift(i)
+        #df[f'RSI_Lag_{i}'] = df['RSI'].shift(i)
     return df
 
 def _load_and_merge_data(ticker, start_date, end_date):
@@ -113,13 +113,14 @@ def _load_and_merge_data(ticker, start_date, end_date):
     cols = [
         'Log_Ret',        # TARGET (Posición 0)
         'Volume', 'Interest_Rate', 'USD_Index', 'VIX', # Macroeconomía
-        'SMA_20', 'SMA_50', 'RSI', 'MACD', 'MACD_Signal'  # Técnico
+        #'SMA_20', 'SMA_50', 'RSI', 
+        'MACD', 'MACD_Signal'  # Técnico
     ]
 
-    for i in [1, 3, 5]:
+    """for i in [1, 3, 5]:
         cols.append(f'Log_Ret_Lag_{i}')
-        cols.append(f'SMA_50_Lag_{i}')
-        cols.append(f'RSI_Lag_{i}')
+        #cols.append(f'SMA_50_Lag_{i}')
+        cols.append(f'RSI_Lag_{i}')"""
 
         
     df_final = df_final[cols]
@@ -128,7 +129,7 @@ def _load_and_merge_data(ticker, start_date, end_date):
 # --------------------------------------------------------------------------
 
 class CommodityDataModule(pl.LightningDataModule):
-    def __init__(self, ticker="GC=F", start_date="2015-01-01", end_date="2024-12-31", 
+    def __init__(self, ticker="GC=F", start_date="2000-01-01", end_date="2024-12-31", 
                  window_size=30, batch_size=32, split_ratio=0.8, 
                  prediction_horizon=1):
         super().__init__()
