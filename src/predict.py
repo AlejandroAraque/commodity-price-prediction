@@ -11,20 +11,23 @@ from model import LSTMRegressor
 # --- CONFIGURACIÓN V5 ---
 CHECKPOINT_FOLDER = "checkpoints"
 TICKER = "GC=F"
-HORIZON = 3   # Mismo horizonte que entrenaste
-IMAGE_NAME = "resultado_v5_lags.png"
+HORIZON = 1   # Mismo horizonte que entrenaste
+SEARCH_TAG = "V6" 
+IMAGE_NAME = "resultado_v6_cnn.png"
 
 def find_best_checkpoint():
-    # Buscamos checkpoints que contengan "V5" (o el nombre que le pusiste al exp_name)
-    files = [f for f in os.listdir(CHECKPOINT_FOLDER) if "V5" in f and f.endswith(".ckpt")]
+    # Usamos la variable SEARCH_TAG
+    files = [f for f in os.listdir(CHECKPOINT_FOLDER) if SEARCH_TAG in f and f.endswith(".ckpt")]
+    
     if not files:
-        # Si no encuentra V5, coge el último modificado (fallback)
-        print("⚠️ No encontré 'V5' en el nombre, buscando el más reciente...")
+        # Fallback inteligente: Si no encuentra la V6, busca el último archivo creado cualquiera
+        print(f"⚠️ No encontré '{SEARCH_TAG}' en los archivos. Buscando el más reciente de todos...")
         files = [f for f in os.listdir(CHECKPOINT_FOLDER) if f.endswith(".ckpt")]
         
     if not files:
-        raise FileNotFoundError("❌ No hay checkpoints.")
+        raise FileNotFoundError("❌ No hay checkpoints en la carpeta.")
         
+    # Ordenar por fecha (el más nuevo al final)
     files.sort(key=lambda x: os.path.getmtime(os.path.join(CHECKPOINT_FOLDER, x)))
     return os.path.join(CHECKPOINT_FOLDER, files[-1])
 
@@ -32,7 +35,7 @@ def get_aligned_prices_and_data():
     """
     RÉPLICA EXACTA de dataset.py para asegurar alineación de filas.
     """
-    print("💰 Descargando y procesando datos (V5 - Con Lags)...")
+    print("💰 Descargando y procesando datos...")
     
     # 1. Mismos Tickers
     ALL_TICKERS = [TICKER, 'DX-Y.NYB', '^TNX', '^VIX']

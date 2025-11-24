@@ -104,7 +104,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Entrenamiento de Modelo de Predicción de Commodities')
     
     # Configuración del Modelo (Permite el cambio entre arquitecturas)
-    parser.add_argument('--model_name', type=str, default='LSTM', choices=['LSTM', 'GRU'], help='Nombre del modelo a usar.')
+    parser.add_argument('--model_name', type=str, default='LSTM', choices=['LSTM', 'GRU', 'CNNLSTM'], help='Nombre del modelo a usar.')
     parser.add_argument('--input_size', type=int, default=19, help='Número de features (columnas) de entrada.')
     
     # Hiperparámetros
