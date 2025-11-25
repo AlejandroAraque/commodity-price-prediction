@@ -19,6 +19,24 @@ def _add_technical_indicators(df):
     # SMA 50: Tendencia a medio plazo (aprox. 2.5 meses)
     #df['SMA_50'] = ta.sma(df['Close_Price'], length=50)
 
+    # A. Gold/Silver Ratio (El Termómetro del Sector)
+    # Lógica: Si el ratio sube, el oro está caro respecto a la plata (posible corrección o la plata subirá).
+    df['Gold_Silver_Ratio'] = df['Close_Price'] / df['Silver_Price']
+    
+    # B. Correlación con el Dólar Australiano (AUD)
+    # Lógica: Australia produce oro. Si el AUD sube, suele ser bueno para el oro.
+    # Calculamos el retorno del AUD primero
+    df['AUD_Ret'] = np.log(df['AUD_USD'] / df['AUD_USD'].shift(1))
+    
+    # 4. Retornos Logarítmicos (Volatilidad)
+    # Ayuda al modelo a entender la magnitud del cambio diario
+    df['Log_Ret'] = np.log(df['Close_Price'] / df['Close_Price'].shift(1))
+
+    # Calculamos la correlación móvil de 20 días
+    # +1: Se mueven juntos (Confirmación)
+    # -1: Divergencia (Alerta)
+    df['AUD_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['AUD_Ret']).fillna(0)
+
     #2. RSI (FUERZA RELATIVA DEL INDICE)
     df['RSI'] = ta.rsi(df['Close_Price'], length=14)
 
@@ -27,22 +45,29 @@ def _add_technical_indicators(df):
     if macd is not None:
         df['MACD'] = macd['MACD_12_26_9']
         df['MACD_Signal'] = macd['MACDs_12_26_9']
+        df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
+
+    df['USD_Ret'] = np.log(df['USD_Index'] / df['USD_Index'].shift(1))
+    df['USD_Gold_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['USD_Ret'])
     
-    # 4. Retornos Logarítmicos (Volatilidad)
-    # Ayuda al modelo a entender la magnitud del cambio diario
-    df['Log_Ret'] = np.log(df['Close_Price'] / df['Close_Price'].shift(1))
+    # Rellenamos los primeros 20 días (que serán NaN) con 0 (sin correlación)
+    df['USD_Gold_Corr'] = df['USD_Gold_Corr'].fillna(0)
+
+    
 
   #  5. Nuevas columnas con lags
-    lags = [1, 3, 5] # Miramos ayer, hace 3 días y hace 5 días
-    #for i in lags:
+    #lags = [1, 3, 5] # Miramos ayer, hace 3 días y hace 5 días
+    #for lag in lags:
         # Lag del Retorno (Velocidad pasada)
-        #df[f'Log_Ret_Lag_{i}'] = df['Log_Ret'].shift(i)
+        #df[f'Log_Ret_Lag_{lag}'] = df['Log_Ret'].shift(lag)
         
         # Lag de la Tendencia (¿Dónde estaba la media móvil?)
-        #df[f'SMA_50_Lag_{i}'] = df['SMA_50'].shift(i)
+        #df[f'SMA_50_Lag_{lag}'] = df['SMA_50'].shift(lag)
         
         # Lag del RSI (¿Estaba sobrecomprado?)
-        #df[f'RSI_Lag_{i}'] = df['RSI'].shift(i)
+        #df[f'RSI_Lag_{lag}'] = df['RSI'].shift(lag)
+
+        #df[f'USD_Corr_Lag_{lag}'] = df['USD_Gold_Corr'].shift(lag)
     return df
 
 def _load_and_merge_data(ticker, start_date, end_date):
@@ -53,8 +78,9 @@ def _load_and_merge_data(ticker, start_date, end_date):
     EX_TICKER_USA = 'DX-Y.NYB' # Dólar
     EX_TICKER_RATE = '^TNX'    # Tipos de Interés
     EX_TICKER_VIX = '^VIX'  # <--- CAMBIO 1: Añadido VIX
-    
-    ALL_TICKERS = [ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX]
+    EX_TICKER_SILVER = 'SI=F'     # <--- NUEVO
+    EX_TICKER_AUD = 'AUDUSD=X'    # <--- NUEVO
+    ALL_TICKERS = [ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX,EX_TICKER_AUD,EX_TICKER_SILVER]
     
     print(f"📥 Descargando: {ALL_TICKERS}")
     
@@ -72,7 +98,7 @@ def _load_and_merge_data(ticker, start_date, end_date):
 
     # 3. FORZAMOS EL ORDEN: [Oro, Dólar, Tasas]
     # Así nos aseguramos de que la columna 0 SIEMPRE sea el objetivo (Oro)
-    df_close = df_close[[ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX]]
+    df_close = df_close[[ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX, EX_TICKER_SILVER, EX_TICKER_AUD]]
 
     # 4. Manejo del Volumen (Solo del activo principal)
     # Buscamos 'Volume' de forma segura
@@ -95,7 +121,15 @@ def _load_and_merge_data(ticker, start_date, end_date):
 
     # Ahora sí podemos renombrar con seguridad porque forzamos el orden en el paso 3
     # Orden esperado: [Ticker_Objetivo, Dolar, Tasas, Volumen]
-    df_final.columns = ['Close_Price', 'USD_Index', 'Interest_Rate', 'VIX', 'Volume']
+    df_final.columns = [
+        'Close_Price',   # 1. ticker
+        'USD_Index',     # 2. DOLLAR
+        'Interest_Rate', # 3. RATE
+        'VIX',           # 4. VIX
+        'Silver_Price',  # 5. SILVER (Nuevo)
+        'AUD_USD',       # 6. AUD (Nuevo)
+        'Volume'         # 7. Volume
+    ]
 
     # --- 4. INGENIERÍA DE CARACTERÍSTICAS (Fase 2.1) ---
     print("📈 Calculando indicadores técnicos (SMA, RSI, MACD)...")
@@ -111,10 +145,26 @@ def _load_and_merge_data(ticker, start_date, end_date):
     
     # --- SELECCIÓN DE COLUMNAS ---
     cols = [
-        'Log_Ret',        # TARGET (Posición 0)
-        'Volume', 'Interest_Rate', 'USD_Index', 'VIX', # Macroeconomía
-        #'SMA_20', 'SMA_50', 'RSI', 
-        'MACD', 'MACD_Signal'  # Técnico
+    # 1. El Objetivo
+    'Log_Ret',        
+    
+    # 2. Sentimiento y Volumen
+    'Volume',         # Confirma si el movimiento es real o falso
+    'VIX',            # Miedo (Anticipa subidas de oro)
+    
+    # 3. Macroeconomía (Las Causas)
+    'Interest_Rate',  # Coste de oportunidad (Enemigo del oro)
+    'USD_Ret',        # La fuerza del dólar (Enemigo del oro)
+    'USD_Gold_Corr',  # ¿Están peleados hoy? (Contexto)
+    
+    # 4. Relaciones Inter-Mercado
+    'Gold_Silver_Ratio', # Valor relativo
+    'AUD_Ret',           # Divisa productora (Adelanta movimientos)
+    'AUD_Corr',          # Fuerza de la relación con divisas
+    
+    # 5. Osciladores (El "Timing")
+    #RSI',            # Para detectar sobrecompra/sobreventa (Necesario)
+    'MACD_Hist'       # NUEVO: Calcula esto en lugar de Signal (MACD - Signal)
     ]
 
     """for i in [1, 3, 5]:

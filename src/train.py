@@ -105,7 +105,7 @@ if __name__ == "__main__":
     
     # Configuración del Modelo (Permite el cambio entre arquitecturas)
     parser.add_argument('--model_name', type=str, default='LSTM', choices=['LSTM', 'GRU', 'CNNLSTM'], help='Nombre del modelo a usar.')
-    parser.add_argument('--input_size', type=int, default=19, help='Número de features (columnas) de entrada.')
+    parser.add_argument('--input_size', type=int, default=11, help='Número de features (columnas) de entrada.')
     
     # Hiperparámetros
     parser.add_argument('--hidden_size', type=int, default=64, help='Neuronas en capa oculta LSTM/GRU.')
@@ -123,6 +123,5 @@ if __name__ == "__main__":
     # --- NUEVO: Argumento para nombrar el archivo de salida ---
     parser.add_argument('--exp_name', type=str, default=None, help='Nombre opcional para guardar checkpoints y logs.')
     parser.add_argument('--prediction_horizon', type=int, default=1, help='Días a futuro a predecir.')
-
     args = parser.parse_args()
     main(args)
