@@ -53,7 +53,7 @@ def _add_technical_indicators(df):
     # Rellenamos los primeros 20 días (que serán NaN) con 0 (sin correlación)
     df['USD_Gold_Corr'] = df['USD_Gold_Corr'].fillna(0)
 
-    
+    df[f'sube'] = df['Log_Ret']/df['Log_Ret'].shift(1)
 
   #  5. Nuevas columnas con lags
     #lags = [1, 3, 5] # Miramos ayer, hace 3 días y hace 5 días
@@ -163,7 +163,7 @@ def _load_and_merge_data(ticker, start_date, end_date):
     'AUD_Corr',          # Fuerza de la relación con divisas
     
     # 5. Osciladores (El "Timing")
-    #RSI',            # Para detectar sobrecompra/sobreventa (Necesario)
+    'RSI',            # Para detectar sobrecompra/sobreventa (Necesario)
     'MACD_Hist'       # NUEVO: Calcula esto en lugar de Signal (MACD - Signal)
     ]
 

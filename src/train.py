@@ -56,19 +56,32 @@ def main(args):
     # Si he puesto un nombre de experimento (--exp_name), úsalo. Si no, usa el nombre del modelo.
     experiment_name = args.exp_name if args.exp_name else args.model_name
     # Checkpoint (Guarda el mejor modelo)
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+    '''checkpoint_callback = pl.callbacks.ModelCheckpoint(
         dirpath='checkpoints',
         filename=f"{experiment_name}-best-val", 
         save_top_k=1,
         monitor='val_loss',
         mode='min'
+    )'''
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+        dirpath='checkpoints',
+        # AQUI ESTÁ LA CLAVE: Miramos la habilidad, no el error
+        monitor='val_skill',    
+        # Queremos maximizar la habilidad (más alta es mejor)
+        mode='max',             
+        # Guardamos el archivo con el skill en el nombre para verlo fácil
+        filename=f'{args.exp_name}-{{epoch:02d}}-{{val_skill:.4f}}',
+        save_top_k=1,
+        verbose=True
     )
     
     # Early Stopping (Detiene el entrenamiento si no hay mejora)
     early_stopping_callback = pl.callbacks.EarlyStopping(
-        monitor='val_loss',
-        patience=15, # Espera 15 épocas antes de detener
-        mode='min'
+        monitor='val_skill',
+        min_delta=0.001,
+        patience=40,
+        verbose=True,
+        mode='max'
     )
 
     # Logger (Usamos CSVLogger para guardar las métricas de forma simple)

@@ -12,8 +12,8 @@ from model import LSTMRegressor, CNNLSTM_Block
 CHECKPOINT_FOLDER = "checkpoints"
 TICKER = "GC=F"
 HORIZON = 1 
-SEARCH_TAG = "V8" # IMPORTANTE: Cambia esto al nombre de tu experimento nuevo
-IMAGE_NAME = "resultado_v8_macro.png"
+SEARCH_TAG = "V9" # IMPORTANTE: Cambia esto al nombre de tu experimento nuevo
+IMAGE_NAME = "resultado_v9_skill.png"
 
 def find_best_checkpoint():
     files = [f for f in os.listdir(CHECKPOINT_FOLDER) if SEARCH_TAG in f and f.endswith(".ckpt")]
@@ -74,7 +74,7 @@ def get_aligned_prices_and_data():
     df_final['USD_Gold_Corr'] = df_final['Log_Ret'].rolling(window=20).corr(df_final['USD_Ret']).fillna(0)
 
     # C. Indicadores Técnicos
-    #df_final['RSI'] = ta.rsi(df_final['Close_Price'], length=14)
+    df_final['RSI'] = ta.rsi(df_final['Close_Price'], length=14)
     
     macd = ta.macd(df_final['Close_Price'])
     if macd is not None:
@@ -180,7 +180,7 @@ def main():
     plt.plot(real_prices_target[-ZOOM:], label=f'Precio Real (T+{HORIZON})', color='navy', linewidth=2, marker='o', markersize=4, alpha=0.5)
     plt.plot(pred_prices_projected[-ZOOM:], label=f'Predicción IA (Macro)', color='crimson', linestyle='--', linewidth=2, marker='x', markersize=6)
     
-    plt.title(f"Modelo V8 (Macro + Técnico): Anticipación Real", fontsize=16)
+    plt.title(f"Modelo {SEARCH_TAG}", fontsize=16)
     plt.legend(fontsize=12)
     plt.grid(True, alpha=0.3)
     

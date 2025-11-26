@@ -2,27 +2,38 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 
-# --- 1. FUNCIÓN DE PÉRDIDA PERSONALIZADA (V8 - Anti Flatline) ---
+# --- 1. FUNCIÓN DE PÉRDIDA PERSONALIZADA (V9 - Centered) ---
 class DirectionalMSELoss(nn.Module):
-    def __init__(self, penalty_factor=10.0, stagnation_penalty=0.1):
+    def __init__(self, penalty_factor=10.0, stagnation_penalty=1.0):
         super().__init__()
         self.mse = nn.MSELoss(reduction='none') 
         self.penalty_factor = penalty_factor
         self.stagnation_penalty = stagnation_penalty 
 
     def forward(self, y_pred, y_true):
-        # 1. Error base (MSE)
+        # 1. Error base (MSE) - Este no cambia, mide distancia pura
         loss = self.mse(y_pred, y_true)
         
-        # 2. Penalización por Dirección Incorrecta
-        direction_match = torch.sign(y_pred) * torch.sign(y_true)
+        # --- CORRECCIÓN CRÍTICA: RECENTRADO ---
+        # Como los datos están entre [0, 1], el "0 real" (sin cambio) no es 0.
+        # Asumimos que la media del batch representa el punto neutral aproximado.
+        # Esto convierte los valores [0, 1] en aprox [-0.5, +0.5]
+        batch_center = y_true.mean()
+        
+        pred_centered = y_pred - batch_center
+        true_centered = y_true - batch_center
+        
+        # 2. Penalización por Dirección (Ahora sí funciona el signo)
+        # Si uno está por encima de la media y el otro por debajo -> Signos opuestos
+        direction_match = torch.sign(pred_centered) * torch.sign(true_centered)
         dir_penalty = torch.where(direction_match < 0, self.penalty_factor, 1.0)
         
-        # 3. Penalización por "Flatline" (Predecir 0)
-        # Castiga fuertemente si el modelo intenta predecir 0 exacto
-        flat_penalty = torch.exp(-torch.abs(y_pred) * 100) * self.stagnation_penalty
+        # 3. Penalización por "Flatline" (Estancamiento)
+        # Ahora castigamos si 'pred_centered' se acerca a 0 (que es la media del batch)
+        # Es decir, castigamos si predice el promedio aburrido.
+        flat_penalty = torch.exp(-torch.abs(pred_centered) * 50) * self.stagnation_penalty
         
-        # Error Total
+        # Combinación
         total_loss = (loss * dir_penalty) + flat_penalty
         
         return torch.mean(total_loss)
@@ -109,11 +120,28 @@ class LSTMRegressor(pl.LightningModule):
             return loss
 
     def validation_step(self, batch, batch_idx):
-            x, y = batch
-            y_hat = self(x)
-            loss = self.criterion(y_hat, y)
-            self.log("val_loss", loss, prog_bar=True)
-            return loss
+        x, y = batch
+        y_hat = self(x)
+        
+        # 1. El error de tu modelo
+        model_loss = self.criterion(y_hat, y)
+        
+        # 2. El error de la "IA Tonta" (CORREGIDO)
+        # En lugar de predecir ceros, predice la MEDIA del batch.
+        # Esto equivale a decir: "No sé qué pasará, así que apuesto al promedio".
+        # Si tu modelo no supera al promedio, no sirve.
+        batch_mean = torch.mean(y)
+        naive_target = torch.full_like(y, batch_mean) # Llenamos con la media (aprox 0.5)
+        
+        naive_loss = torch.nn.functional.mse_loss(naive_target, y)
+        
+        # 3. SKILL SCORE (R2 Score aproximado)
+        skill_score = 1.0 - (model_loss / (naive_loss + 1e-8))
+        
+        self.log("val_loss", model_loss, prog_bar=True, on_epoch=True)
+        self.log("val_skill", skill_score, prog_bar=True, on_epoch=True)
+        
+        return model_loss
         
     def test_step(self, batch, batch_idx):
             x, y = batch
