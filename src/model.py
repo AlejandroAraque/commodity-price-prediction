@@ -84,74 +84,80 @@ class CNNLSTM_Block(nn.Module):
         return out, hidden
 
 # --- 2. REGRESOR PRINCIPAL (LIGHTNING) ---
-class LSTMRegressor(pl.LightningModule):
-    def __init__(self, input_size=19, model_name='LSTM', hidden_size=64, num_layers=2, dropout=0.2, learning_rate=0.001):
+class LSTMClassifier(pl.LightningModule):
+    def __init__(self, input_size=10, model_name='LSTM', hidden_size=64, num_layers=2, dropout=0.2, learning_rate=0.001):
         super().__init__()
         self.save_hyperparameters()
 
-        # Usamos la Fábrica para construir el corazón del modelo
-        self.sequence_model, self.regressor = ModelFactory(
-            model_name, 
-            self.hparams
-        )
+        # Reutilizamos tu fábrica de modelos (el cuerpo de la red es el mismo)
+        self.sequence_model, self.regressor = ModelFactory(model_name, self.hparams)
         
-        #self.criterion = DirectionalMSELoss(penalty_factor=10.0)
-        #self.criterion = nn.MSELoss()
-        self.criterion = DirectionalMSELoss(penalty_factor=10.0, stagnation_penalty=0.5)
+        # CAMBIO 1: Función de Pérdida para Clasificación
+        self.criterion = nn.BCEWithLogitsLoss() 
 
     def forward(self, x):
-        # Paso 1: Procesar secuencia (LSTM, GRU o CNN-LSTM)
-        # output shape: (batch, seq_len, hidden_size)
         seq_out, _ = self.sequence_model(x) 
-        
-        # Paso 2: Coger solo el último día
         last_time_step = seq_out[:, -1, :]
         
-        # Paso 3: Regresión final
-        prediction = self.regressor(last_time_step)
-        
-        return prediction
+        # El regressor devuelve un "Logit" (número sin escala, ej: 2.5 o -1.3)
+        logits = self.regressor(last_time_step)
+        return logits 
 
     def training_step(self, batch, batch_idx):
-            x, y = batch
-            y_hat = self(x)
-            loss = self.criterion(y_hat, y)
-            self.log("train_loss", loss, prog_bar=True)
-            return loss
+        x, y = batch
+        # 1. Obtenemos logits y aseguramos que sea plano (Batch,)
+        logits = self(x).squeeze() 
+        
+        # 2. Aseguramos que 'y' también sea plano y float
+        # y viene como (Batch, 1), lo convertimos a (Batch,)
+        y = y.squeeze().float()
+        loss = self.criterion(logits, y)
+        
+        # CAMBIO 2: Calculamos Accuracy (Precisión)
+        # Sigmoide convierte logit en probabilidad (0 a 1)
+        probs = torch.sigmoid(logits)
+        preds = (probs > 0.5).float() # Umbral 0.5
+        
+        acc = (preds == y).float().mean()
+        
+        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_acc", acc, prog_bar=True)
+        return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
-        y_hat = self(x)
+        logits = self(x).squeeze()
+        # 2. Aseguramos que 'y' también sea plano y float
+        # y viene como (Batch, 1), lo convertimos a (Batch,)
+        y = y.squeeze().float()
+        loss = self.criterion(logits, y)
         
-        # 1. El error de tu modelo
-        model_loss = self.criterion(y_hat, y)
+        # Accuracy en Validación
+        probs = torch.sigmoid(logits)
+        preds = (probs > 0.5).float()
+        acc = (preds == y).float().mean()
         
-        # 2. El error de la "IA Tonta" (CORREGIDO)
-        # En lugar de predecir ceros, predice la MEDIA del batch.
-        # Esto equivale a decir: "No sé qué pasará, así que apuesto al promedio".
-        # Si tu modelo no supera al promedio, no sirve.
-        batch_mean = torch.mean(y)
-        naive_target = torch.full_like(y, batch_mean) # Llenamos con la media (aprox 0.5)
-        
-        naive_loss = torch.nn.functional.mse_loss(naive_target, y)
-        
-        # 3. SKILL SCORE (R2 Score aproximado)
-        skill_score = 1.0 - (model_loss / (naive_loss + 1e-8))
-        
-        self.log("val_loss", model_loss, prog_bar=True, on_epoch=True)
-        self.log("val_skill", skill_score, prog_bar=True, on_epoch=True)
-        
-        return model_loss
-        
+        # IMPORTANTE: Logueamos 'val_acc' para que el Trainer lo pueda monitorear
+        self.log("val_loss", loss, prog_bar=True)
+        self.log("val_acc", acc, prog_bar=True) 
+        return loss
+
+    def configure_optimizers(self):
+        return torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate, weight_decay=1e-5)
+    
     def test_step(self, batch, batch_idx):
             x, y = batch
-            y_hat = self(x)
-            loss = self.criterion(y_hat, y)
+            # 1. Obtenemos logits y aseguramos que sea plano (Batch,)
+            logits = self(x).squeeze() 
+            
+            # 2. Aseguramos que 'y' también sea plano y float
+            # y viene como (Batch, 1), lo convertimos a (Batch,)
+            y = y.squeeze().float()
+            loss = self.criterion(logits, y)
             self.log("test_loss", loss, prog_bar=True)
             return loss
 
-    def configure_optimizers(self):
-            return torch.optim.AdamW(self.parameters(), lr=self.hparams.learning_rate, weight_decay=1e-5)
+    
 
 # --- 3. FÁBRICA DE MODELOS ---
 

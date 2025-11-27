@@ -5,9 +5,9 @@ import os
 import sys
 import random
 import numpy as np
-
+from model import LSTMClassifier, CNNLSTM_Block
 from dataset import CommodityDataModule
-from model import LSTMRegressor
+
 
 # --------------------------------------------------------------------------
 # --- FUNCIÓN DE REPRODUCIBILIDAD  ---
@@ -43,7 +43,7 @@ def main(args):
     #ESTO LO HACE EL TRAINER YA, AL LLAMARLO: trainer.fit(model, dm)
 
     # 4. Configurar el Modelo (Llama a la Fábrica Maestra)
-    model = LSTMRegressor(
+    model = LSTMClassifier(
         input_size=args.input_size, 
         model_name=args.model_name,
         hidden_size=args.hidden_size,
@@ -63,23 +63,22 @@ def main(args):
         monitor='val_loss',
         mode='min'
     )'''
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
-        dirpath='checkpoints',
-        # AQUI ESTÁ LA CLAVE: Miramos la habilidad, no el error
-        monitor='val_skill',    
-        # Queremos maximizar la habilidad (más alta es mejor)
-        mode='max',             
-        # Guardamos el archivo con el skill en el nombre para verlo fácil
-        filename=f'{args.exp_name}-{{epoch:02d}}-{{val_skill:.4f}}',
-        save_top_k=1,
-        verbose=True
-    )
     
-    # Early Stopping (Detiene el entrenamiento si no hay mejora)
-    early_stopping_callback = pl.callbacks.EarlyStopping(
-        monitor='val_skill',
+    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+    dirpath='checkpoints',
+    monitor='val_acc',       # <--- AHORA BUSCAMOS PRECISIÓN
+    mode='max',              # Queremos la máxima precisión posible
+    filename=f'{args.exp_name}-{{epoch:02d}}-{{val_acc:.4f}}',
+    save_top_k=1,
+    verbose=True
+)
+    
+    
+   # 2. Early Stopping (Detiene el entrenamiento si no mejora la precisión)
+    early_stop_callback = pl.callbacks.EarlyStopping(
+        monitor='val_acc',       # <--- CAMBIO: Mira la precisión, no el skill
         min_delta=0.001,
-        patience=40,
+        patience=20,             # Dale paciencia, la precisión oscila mucho
         verbose=True,
         mode='max'
     )
@@ -95,7 +94,7 @@ def main(args):
         max_epochs=args.epochs,
         accelerator="auto",      # Detecta CPU/GPU/MPS
         devices="auto",
-        callbacks=[checkpoint_callback, early_stopping_callback],
+        callbacks=[checkpoint_callback, early_stop_callback],
         logger=logger,
         enable_progress_bar=True,
         log_every_n_steps=5,
