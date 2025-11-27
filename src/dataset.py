@@ -9,50 +9,83 @@ import pandas_ta_classic as ta
 import os
 import sys
 
-def _add_technical_indicators(df):
+# --- CONFIGURACIÓN MAESTRA DE ACTIVOS ---
+# Definimos las reglas del juego para cada commodity.
+ASSET_CONFIG = {
+    'GC=F': { # ORO
+        'name': 'Gold',
+        'exogenous': ['DX-Y.NYB', '^TNX', '^VIX', 'SI=F', 'AUDUSD=X'], # Los "Amigos"
+        'cols_rename': ['USD_Index', 'Interest_Rate', 'VIX', 'Related_Asset', 'Currency_Pair'], # Nombres genéricos
+        'ratio_name': 'Gold_Silver_Ratio' # Nombre específico para la gráfica
+    },
+    'CL=F': { # PETRÓLEO (WTI)
+        'name': 'Crude Oil',
+        'exogenous': ['DX-Y.NYB', '^TNX', '^VIX', 'NG=F', 'CADUSD=X'], # NG=Gas, CAD=Canada
+        'cols_rename': ['USD_Index', 'Interest_Rate', 'VIX', 'Related_Asset', 'Currency_Pair'],
+        'ratio_name': 'Oil_Gas_Ratio'
+    },
+    'SI=F': { # PLATA
+        'name': 'Silver',
+        # Para la plata, su "hermano mayor" es el Oro (GC=F) y su metal industrial primo es el Cobre (HG=F)
+        'exogenous': ['DX-Y.NYB', '^TNX', '^VIX', 'GC=F', 'HG=F'], 
+        'cols_rename': ['USD_Index', 'Interest_Rate', 'VIX', 'Related_Asset', 'Currency_Pair'],
+        'ratio_name': 'Silver_Gold_Ratio'
+    }
+}
+
+def _add_technical_indicators(df, config):
     df = df.copy()
     
-    # --- 1. DATOS BÁSICOS ---
-    # Log Retorno (Fundamental)
+    # 1. DATOS BÁSICOS (Igual para todos)
     df['Log_Ret'] = np.log(df['Close_Price'] / df['Close_Price'].shift(1))
     
-    # --- 2. TARGET BINARIO (CRÍTICO: CALCULARLO AQUÍ) ---
-    # 1.0 si sube, 0.0 si baja/plano.
-    # Lo calculamos antes de que el Scaler rompa los signos.
+    # 2. TARGET BINARIO (Para Clasificación)
     df['Binary_Target'] = (df['Log_Ret'] > 0).astype(float)
     
-    # --- 3. RELACIONES INTER-MERCADO ---
-    # A. Gold/Silver Ratio
-    df['Gold_Silver_Ratio'] = df['Close_Price'] / df['Silver_Price']
+    # A. Ratio Principal (El "Hermano")
+    # El código lee en la config cómo llamar a este ratio (ej: 'Gold_Silver_Ratio')
+    # y usa la columna genérica 'Related_Asset' que renombramos abajo.
+    if 'Related_Asset' in df.columns:
+        df[config['ratio_name']] = df['Close_Price'] / df['Related_Asset']
     
-    # B. Correlación AUD
-    df['AUD_Ret'] = np.log(df['AUD_USD'] / df['AUD_USD'].shift(1))
-    df['AUD_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['AUD_Ret']).fillna(0)
+    # B. Correlación con el Activo Secundario/Divisa
+    # (Puede ser AUD para oro, CAD para petróleo, Cobre para plata...)
+    if 'Currency_Pair' in df.columns:
+        # Calculo el retorno de ese activo secundario
+        df['Sec_Asset_Ret'] = np.log(df['Currency_Pair'] / df['Currency_Pair'].shift(1))
+        # Calculamos la correlación móvil
+        df['Sec_Asset_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['Sec_Asset_Ret']).fillna(0)
+    else:
+        # Si por lo que sea no se descargó, rellenamos con 0 para no romper el modelo
+        df['Sec_Asset_Ret'] = 0.0
+        df['Sec_Asset_Corr'] = 0.0
 
-    # C. Correlación USD
-    df['USD_Ret'] = np.log(df['USD_Index'] / df['USD_Index'].shift(1))
-    df['USD_Gold_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['USD_Ret']).fillna(0)
+    # C. Correlación USD (Siempre existe)
+    if 'USD_Index' in df.columns:
+        df['USD_Ret'] = np.log(df['USD_Index'] / df['USD_Index'].shift(1))
+        df['USD_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['USD_Ret']).fillna(0)
 
-    # --- 4. INDICADORES TÉCNICOS ---
-    # RSI
+    # 4. INDICADORES TÉCNICOS
     df['RSI'] = ta.rsi(df['Close_Price'], length=14)
-
-    # MACD Histogram
+    
     macd = ta.macd(df['Close_Price']) 
     if macd is not None:
-        # MACD_Hist = MACD - Signal
-        # Usamos nombres seguros de pandas_ta (columna 1 es histograma)
+        # MACD Histogram (Columna 1 de pandas_ta)
         df['MACD_Hist'] = macd.iloc[:, 1] 
 
     return df
 
 def _load_and_merge_data(ticker, start_date, end_date):
-    EX_TICKER_USA = 'DX-Y.NYB'
-    EX_TICKER_RATE = '^TNX'    
-    EX_TICKER_VIX = '^VIX' 
-    EX_TICKER_SILVER = 'SI=F'     
-    EX_TICKER_AUD = 'AUDUSD=X'   
-    ALL_TICKERS = [ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX, EX_TICKER_AUD, EX_TICKER_SILVER]
+
+    if ticker not in ASSET_CONFIG:
+        raise ValueError(f"❌ Activo {ticker} no configurado. Añádelo a ASSET_CONFIG.")
+    
+    # Cargamos la configuración específica
+    config = ASSET_CONFIG[ticker]
+
+    # Construimos la lista de descarga
+    # El activo principal (ticker) + sus amigos (exogenous)
+    ALL_TICKERS = [ticker] + config['exogenous']
     
     print(f"📥 Descargando: {ALL_TICKERS}")
     
@@ -63,8 +96,16 @@ def _load_and_merge_data(ticker, start_date, end_date):
     except KeyError:
         df_close = df_raw['Close'] if 'Close' in df_raw else df_raw
 
-    # Forzamos orden
-    df_close = df_close[[ticker, EX_TICKER_USA, EX_TICKER_RATE, EX_TICKER_VIX, EX_TICKER_SILVER, EX_TICKER_AUD]]
+    # 3. FORZAR ORDEN (CON SEGURIDAD)
+    # Verificamos qué columnas existen realmente antes de reordenar
+    available_cols = [c for c in ALL_TICKERS if c in df_close.columns]
+    
+    if len(available_cols) < len(ALL_TICKERS):
+        missing = set(ALL_TICKERS) - set(available_cols)
+        print(f"⚠️ Aviso: Faltan datos de: {missing}")
+    
+    # Reordenamos solo con lo que tenemos
+    df_ordered = df_close[available_cols].copy()
 
     # Volumen
     try:
@@ -73,38 +114,70 @@ def _load_and_merge_data(ticker, start_date, end_date):
         else:
              vol_series = df_raw['Volume']
     except KeyError:
-        vol_series = pd.Series(0, index=df_close.index)
+        vol_series = pd.Series(0, index=df_ordered.index)
 
-    df_final = pd.concat([df_close, vol_series], axis=1)
+    df_final = pd.concat([df_ordered, vol_series], axis=1)
     df_final = df_final.ffill().dropna()
 
-    df_final.columns = [
-        'Close_Price', 'USD_Index', 'Interest_Rate', 'VIX', 'Silver_Price', 'AUD_USD', 'Volume'
-    ]
-
-    print("📈 Calculando indicadores...")
-    df_final = _add_technical_indicators(df_final)
+    # CONSTRUIMOS LOS NOMBRES GENÉRICOS
+    # [Precio Cierre] + [Lista de Nombres del Config] + [Volumen]
+    expected_names = ['Close_Price'] + config['cols_rename'] + ['Volume']
     
+    # Asignamos
+    if len(df_final.columns) == len(expected_names):
+        df_final.columns = expected_names
+    else:
+        # Un pequeño control de errores por si Yahoo falla
+        print(f"⚠️ Alerta: Columnas {len(df_final.columns)} vs Esperadas {len(expected_names)}")
+        # Intentamos asignar igual, pero avisando
+        df_final.columns = expected_names
+        
+    # ... (debajo de la unión de precios y volumen) ...
+
+    # 4. RENOMBRADO DINÁMICO
+    # Construimos la lista de nombres esperados:
+    # [Precio Cierre] + [Nombres del Config] + [Volumen]
+    # config['cols_rename'] viene de ASSET_CONFIG (ej: ['USD_Index', ..., 'Related_Asset', 'Currency_Pair'])
+    expected_names = ['Close_Price'] + config['cols_rename'] + ['Volume']
+    
+    # Asignamos los nombres si las longitudes coinciden
+    if len(df_final.columns) == len(expected_names):
+        df_final.columns = expected_names
+    else:
+        # Fallback de seguridad
+        print(f"⚠️ Alerta: Tienes {len(df_final.columns)} columnas, esperabas {len(expected_names)}.")
+        # Intentamos asignar hasta donde llegue
+        df_final.columns = expected_names[:len(df_final.columns)]
+
+    # 5. CALCULAR INDICADORES
+    print(f"📈 Calculando indicadores para {ticker} ({config['name']})...")
+    # ¡IMPORTANTE! Pasamos 'config' aquí
+    df_final = _add_technical_indicators(df_final, config)
+    
+    # Limpieza final
     df_final = df_final.replace([np.inf, -np.inf], np.nan).dropna()
     
-    # --- SELECCIÓN DE COLUMNAS ---
+    # 6. SELECCIÓN FINAL DE COLUMNAS (INPUT DEL MODELO)
+    # Esta lista debe ser GENÉRICA para que sirva para Oro, Petróleo, etc.
     cols = [
         'Log_Ret',        
         'Volume',         
         'VIX',            
         'Interest_Rate',  
         'USD_Ret',        
-        'USD_Gold_Corr',  
-        'Gold_Silver_Ratio', 
-        'AUD_Ret',           
-        'AUD_Corr',          
+        'USD_Corr',      # Correlación USD
+        config['ratio_name'], # Ratio Dinámico (ej: Oil_Gas_Ratio)
+        'Sec_Asset_Ret',      # Retorno Secundario (Genérico)
+        'Sec_Asset_Corr',     # Correlación Secundaria (Genérico)
         'RSI',            
         'MACD_Hist',
-        # AÑADIMOS EL TARGET AL FINAL PARA NO PERDERLO
-        'Binary_Target' 
+        'Binary_Target'       # Target
     ]
-        
-    df_final = df_final[cols]
+    
+    # Filtramos solo las columnas que realmente existen en el dataframe
+    final_cols = [c for c in cols if c in df_final.columns]
+    
+    df_final = df_final[final_cols]
     
     return df_final.astype(float)
 

@@ -6,12 +6,13 @@ import os
 import yfinance as yf
 from dataset import CommodityDataModule
 from model import LSTMClassifier
+import argparse
 
 # --- CONFIGURACIÓN ---
 CHECKPOINT_FOLDER = "checkpoints"
 TICKER = "GC=F"
-SEARCH_TAG = "V10" 
-IMAGE_NAME = "trading_signals_final.png"
+SEARCH_TAG = "V11_Oil" 
+
 
 # --- UMBRAL DE CONFIANZA ---
 # 0.50 = Opera siempre (Agresivo)
@@ -26,7 +27,24 @@ def find_best_checkpoint():
     files.sort(key=lambda x: os.path.getmtime(os.path.join(CHECKPOINT_FOLDER, x)))
     return os.path.join(CHECKPOINT_FOLDER, files[-1])
 
+    
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--ticker', type=str, default='GC=F', help='Ticker del activo')
+    parser.add_argument('--search_tag', type=str, default='V10', help='Tag del experimento (ej: V11)')
+    args = parser.parse_args()
+
+    # Usamos los argumentos
+    global TICKER, SEARCH_TAG, IMAGE_NAME # <--- Añadimos IMAGE_NAME a global si lo usas fuera
+    
+    TICKER = args.ticker
+    SEARCH_TAG = args.search_tag
+    
+    # --- CAMBIO CLAVE: Nombre dinámico ---
+    # Así no machacas la foto del Oro cuando hagas la del Petróleo
+    IMAGE_NAME = f"trading_signals_{SEARCH_TAG}.png"
+    
+    print(f"🖼️ La gráfica se guardará como: {IMAGE_NAME}")
     # 1. Cargar Modelo
     ckpt_path = find_best_checkpoint()
     print(f"🔍 Cargando Cerebro: {ckpt_path}")
@@ -260,9 +278,9 @@ def main():
     print(f"🟢 Compras (Long): {num_buys} ({num_buys/total*100:.1f}%)")
     print(f"🔴 Ventas (Short): {num_sells} ({num_sells/total*100:.1f}%)")
     print("="*30 + "\n")
-
+  
     plt.show()
-
+    plt.savefig(IMAGE_NAME)
 
 
 if __name__ == "__main__":
