@@ -72,15 +72,40 @@ ModelCheckpoint: Monitorea y guarda el modelo con la máxima val_acc.
 
 EarlyStopping: Detiene el proceso si la val_acc deja de mejorar después de 20 épocas (patience=20).
 ```
+## 4. Evaluación y Backtesting
 
-4. Evaluación y Backtesting
-El script src/predict_classifier.py realiza una simulación de backtesting para evaluar la viabilidad de la estrategia en el conjunto de prueba, aplicando una zona de incertidumbre.
+El script `src/predict_classifier.py` realiza una simulación de *backtesting* para evaluar la viabilidad de la estrategia en el conjunto de prueba, aplicando una zona de incertidumbre.
 
-4.1. Estrategia de Trading por Confianza
-El sistema solo genera una señal de Compra/Venta si la probabilidad predicha supera un umbral de confianza definido (CONFIDENCE_THRESHOLD, por defecto 50% en el script). Esto minimiza el riesgo al evitar operar en momentos de alta incertidumbre.
+### 4.1. Estrategia de Trading por Confianza
 
-4.2. Métricas de RendimientoEsta sección define las métricas utilizadas para evaluar la viabilidad de la estrategia de trading simulada.MétricaDefiniciónPrecisión (Trades)Porcentaje de operaciones generadas con el umbral de confianza que resultaron correctas.ROI (Return on Investment)Retorno de Inversión (en porcentaje) de la estrategia simulada sobre el capital inicial.Balanza de DecisionesMuestra el sesgo de la red hacia las señales de Compra (Long) o Venta (Short).
+El sistema solo genera una señal de **Compra/Venta** si la probabilidad predicha supera un umbral de confianza definido (`CONFIDENCE_THRESHOLD`, por defecto 50% en el script). Esto minimiza el riesgo al evitar operar en momentos de alta incertidumbre.
+
+### 4.2. Métricas de Rendimiento
+
+Esta sección define las métricas utilizadas para evaluar la viabilidad de la estrategia de trading simulada.
+
+| Métrica | Definición |
+| :--- | :--- |
+| **Precisión (Trades)** | Porcentaje de operaciones generadas con el umbral de confianza que resultaron correctas. |
+| **ROI** (Return on Investment) | Retorno de Inversión (en porcentaje) de la estrategia simulada sobre el capital inicial. |
+| **Balanza de Decisiones** | Muestra el sesgo de la red hacia las señales de Compra (Long) o Venta (Short). |
 
 Visualización del Rendimiento:
 
-5. Estructura del RepositorioEsta es la estructura modular del proyecto, separando las responsabilidades de datos, modelo y orquestación.DirectorioContenidocheckpoints/Pesos del modelo guardados por ModelCheckpoint (.ckpt). Ignorado por Git.logs/Registros de métricas de entrenamiento (para visualización con TensorBoard). Ignorado por Git.src/CÓDIGO FUENTE.src/dataset.pyLógica de datos (CommodityDataModule), Fusión Multivariante y Feature Engineering.src/model.pyDefiniciones de la arquitectura (LSTMClassifier, ModelFactory).src/train.pyOrquestador principal de entrenamiento.src/predict_classifier.pyScript de Backtesting y simulación de trading.requirements.txtDependencias del proyecto.
+
+***
+
+## 5. Estructura del Repositorio
+
+Esta es la estructura modular del proyecto, separando las responsabilidades de datos, modelo y orquestación.
+
+| Directorio | Contenido |
+| :--- | :--- |
+| **checkpoints/** | Pesos del modelo guardados por ModelCheckpoint (`.ckpt`). Ignorado por Git. |
+| **logs/** | Registros de métricas de entrenamiento (para visualización con TensorBoard). Ignorado por Git. |
+| **src/** | CÓDIGO FUENTE. |
+| `src/dataset.py` | Lógica de datos (`CommodityDataModule`), Fusión Multivariante y Feature Engineering. |
+| `src/model.py` | Definiciones de la arquitectura (`LSTMClassifier`, `ModelFactory`). |
+| `src/train.py` | Orquestador principal de entrenamiento. |
+| `src/predict_classifier.py` | Script de Backtesting y simulación de trading. |
+| `requirements.txt` | Dependencias del proyecto. |
