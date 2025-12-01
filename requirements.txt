@@ -5,3 +5,6 @@ numpy
 yfinance
 scikit-learn
 matplotlib
+fastapi
+uvicorn
+pydantic
