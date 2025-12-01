@@ -182,7 +182,7 @@ def _load_and_merge_data(ticker, start_date, end_date):
     return df_final.astype(float)
 
 class CommodityDataModule(pl.LightningDataModule):
-    def __init__(self, ticker="GC=F", start_date="2000-01-01", end_date="2024-12-31", 
+    def __init__(self, ticker="GC=F", start_date="2000-01-01", end_date="2025-10-31", 
                  window_size=30, batch_size=32, split_ratio=0.8, 
                  prediction_horizon=1):
         super().__init__()

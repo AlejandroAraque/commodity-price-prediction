@@ -126,7 +126,8 @@ if __name__ == "__main__":
     parser.add_argument('--lr', type=float, default=1e-3, help='Learning Rate (Adam initial recomendado: 1e-3)[cite: 51].')
     
     # Configuración del Entrenamiento
-    parser.add_argument('--ticker', type=str, default='GC=F', help='Ticker principal a predecir (Oro, Plata, etc.).')
+    # Opción A (Flexible - Recomendada): Acepta lo que escribas
+    parser.add_argument('--ticker', type=str, default='GC=F', help='Ticker del activo (GC=F, CL=F, SI=F)')
     parser.add_argument('--window_size', type=int, default=30, help='Días pasados a usar como ventana de contexto.')
     parser.add_argument('--batch_size', type=int, default=32, help='Tamaño del lote.')
     parser.add_argument('--epochs', type=int, default=50, help='Número máximo de épocas.')

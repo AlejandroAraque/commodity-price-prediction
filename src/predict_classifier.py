@@ -87,7 +87,7 @@ def main():
         model_dates = model_dates.tz_localize(None)
     
     # Descarga nueva (quitamos zona horaria)
-    raw_df = yf.download(TICKER, start="2000-01-01", end="2025-12-31", interval="1d", auto_adjust=True, progress=False)
+    raw_df = yf.download(TICKER, start="2000-01-01", end="2025-10-31", interval="1d", auto_adjust=True, progress=False)
     try:
         raw_prices = raw_df.xs('Close', level=0, axis=1)
     except KeyError:
