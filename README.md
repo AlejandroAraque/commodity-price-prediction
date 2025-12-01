@@ -71,6 +71,7 @@ Callbacks de Entrenamiento:
 ModelCheckpoint: Monitorea y guarda el modelo con la máxima val_acc.
 
 EarlyStopping: Detiene el proceso si la val_acc deja de mejorar después de 20 épocas (patience=20).
+```
 
 4. Evaluación y Backtesting
 El script src/predict_classifier.py realiza una simulación de backtesting para evaluar la viabilidad de la estrategia en el conjunto de prueba, aplicando una zona de incertidumbre.
