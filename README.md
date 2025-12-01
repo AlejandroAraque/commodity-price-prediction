@@ -62,21 +62,6 @@ Para iniciar el entrenamiento (ejecutar desde la raíz del proyecto):
 python3 src/train.py \
     --model_name LSTM \
     --ticker GC=F \
-<<<<<<< HEAD
-    --epochs 50 \
-    --num_layers 2 \
-    --hidden_size 64 \
-    --lr 0.001
-Parámetros Clave:--ticker: Activo a predecir.--epochs: Número máximo de ciclos de entrenamiento.--seed: Semilla para garantizar la reproducibilidad científica.4. Estructura del RepositorioLa organización modular separa la lógica de datos (dataset.py) de la lógica del modelo (model.py), que es el estándar de PyTorch Lightning.Plaintextcommodity-price-prediction/
-├── checkpoints/         # Modelos guardados (Mejor versión en val_loss)
-├── logs/                # Registros de entrenamiento (métricas y progreso)
-├── src/                 # CÓDIGO FUENTE
-│   ├── dataset.py       # Clase: CommodityDataModule (Logística de datos)
-│   ├── model.py         # Clase: LSTMRegressor (Arquitectura de la Red)
-│   └── train.py         # Script principal (Orquestador: Trainer + Argparse)
-└── requirements.txt     # Dependencias del proyecto
-5. Resultados y Métricas (Pendiente de Entrenamiento)Los resultados se miden en el conjunto de prueba (test set) y se centran en métricas de regresión (error de predicción).📊 Métricas de RegresiónMétricaDefiniciónRMSEError Cuadrático Medio. Penaliza mucho los errores grandes.MAEError Absoluto Medio. Error de predicción promedio en dólares.Visualización del Rendimiento:6. Autor y LicenciaAutor: Alejandro Araque Robles
-=======
     --input_size 11 \
     --exp_name V12_ORO_MACRO \
     --epochs 50 
@@ -88,4 +73,4 @@ Parámetros Clave:--ticker: Activo a predecir.--epochs: Número máximo de ciclo
 pip install -r requirements.txt
 # ¡Asegúrate de que numpy<2!
 pip install "numpy<2"
->>>>>>> 01daa57 (feat: Readme updated)
+
