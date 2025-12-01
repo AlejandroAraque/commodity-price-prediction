@@ -1,5 +1,4 @@
-# commodity-price-prediction
-# 📈 Proyecto TFM: Predicción Multivariante de Commodities (DNN)
+# 📈 Proyecto Predicción Multivariante de Commodities (DNN)
 
 ## 1. Introducción al Proyecto
 
