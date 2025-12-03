@@ -210,7 +210,6 @@ __marimo__/
 # Ignorar los pesos guardados del modelo (pesan mucho)
 checkpoints/*
 !checkpoints/*.ckpt
-
 # Ignorar registros de entrenamiento
 logs/
 
