@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 import pandas_ta_classic as ta
+import datetime
 import os
 import sys
 
@@ -182,12 +183,22 @@ def _load_and_merge_data(ticker, start_date, end_date):
     return df_final.astype(float)
 
 class CommodityDataModule(pl.LightningDataModule):
-    def __init__(self, ticker="GC=F", start_date="2000-01-01", end_date="2025-10-31", 
+    def __init__(self, ticker="GC=F", start_date=None, end_date=None, 
                  window_size=30, batch_size=32, split_ratio=0.8, 
                  prediction_horizon=1):
         super().__init__()
         self.save_hyperparameters() 
         self.scaler = MinMaxScaler(feature_range=(0, 1))
+        
+        # --- LÓGICA DE FECHAS INTELIGENTE ---
+        # Si no me dicen fecha de fin, asumo que es HOY
+        if end_date is None:
+            self.hparams.end_date = datetime.date.today().strftime("%Y-%m-%d")
+        
+        # Si no me dicen fecha de inicio, asumo hace 15 años (suficiente historia)
+        if start_date is None:
+            start_dt = datetime.date.today() - datetime.timedelta(days=365*15)
+            self.hparams.start_date = start_dt.strftime("%Y-%m-%d")
 
     def prepare_data(self):
         self.raw_data = _load_and_merge_data(

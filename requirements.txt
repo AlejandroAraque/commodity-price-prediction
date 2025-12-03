@@ -9,3 +9,6 @@ fastapi
 uvicorn
 pydantic
 pandas_ta_classic
+streamlit
+requests
+plotly
