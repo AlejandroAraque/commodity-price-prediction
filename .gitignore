@@ -208,8 +208,8 @@ __marimo__/
 
 # --- Mis carpetas del proyecto ---
 # Ignorar los pesos guardados del modelo (pesan mucho)
-checkpoints/
-*.ckpt
+checkpoints/*
+!checkpoints/*.ckpt
 
 # Ignorar registros de entrenamiento
 logs/

@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  api-model:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+    container_name: commodity_predictor_api
+    restart: unless-stopped

@@ -11,13 +11,10 @@ import argparse
 # --- CONFIGURACIÓN ---
 CHECKPOINT_FOLDER = "checkpoints"
 TICKER = "GC=F"
-SEARCH_TAG = "V11_Oil" 
+SEARCH_TAG = "V11_Gold" 
 
 
 # --- UMBRAL DE CONFIANZA ---
-# 0.50 = Opera siempre (Agresivo)
-# 0.55 = Solo opera si está 55% seguro (Moderado) -> Recomendado
-# 0.60 = Francotirador (Pocas operaciones, muy seguras)
 CONFIDENCE_THRESHOLD = 0.50
 
 def find_best_checkpoint():
@@ -31,7 +28,7 @@ def find_best_checkpoint():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--ticker', type=str, default='GC=F', help='Ticker del activo')
-    parser.add_argument('--search_tag', type=str, default='V10', help='Tag del experimento (ej: V11)')
+    parser.add_argument('--search_tag', type=str, default='V11', help='Tag del experimento (ej: V11)')
     args = parser.parse_args()
 
     # Usamos los argumentos
@@ -87,7 +84,7 @@ def main():
         model_dates = model_dates.tz_localize(None)
     
     # Descarga nueva (quitamos zona horaria)
-    raw_df = yf.download(TICKER, start="2000-01-01", end="2025-10-31", interval="1d", auto_adjust=True, progress=False)
+    raw_df = yf.download(TICKER, start="2000-01-01", end="2024-10-31", interval="1d", auto_adjust=True, progress=False)
     try:
         raw_prices = raw_df.xs('Close', level=0, axis=1)
     except KeyError:
