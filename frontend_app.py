@@ -467,7 +467,7 @@ if analyze_button:
                     st.markdown("---")
                     
                     # === TABS PARA ORGANIZACIÓN ===
-                    tab_chart, tab_stats, tab_data = st.tabs(["📉 Gráfico OHLC", "📊 Estadísticas", "🗂️ Datos Raw"])
+                    tab_chart, tab_stats, tab_data = st.tabs(["📉 Gráfico ", "📊 Estadísticas", "🗂️ Datos "])
                     
                     with tab_chart:
                         # === GRÁFICO CANDLESTICK ESTILO BLOOMBERG ===
