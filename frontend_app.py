@@ -326,7 +326,7 @@ section[data-testid="stSidebar"] [data-testid="stExpander"] summary span {
 # --- CABECERA FINTECH ---
 st.markdown("""
 <div class="main-header">
-    <h1>🐂 Commodity AI Oracle</h1>
+    <h1>🐂 Commodity AI</h1>
     <p>Sistema de Inteligencia Artificial para Predicción Direccional | LSTM/CNN Neural Networks</p>
 </div>
 """, unsafe_allow_html=True)
