@@ -179,4 +179,6 @@ def predict_direction(data: TimeSeriesInput):
 # ----------------------------------------------------------------------
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Lee la variable PORT de Google, si no existe usa 8080 por defecto
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run(app, host="0.0.0.0", port=port)

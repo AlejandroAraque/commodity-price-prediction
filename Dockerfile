@@ -20,10 +20,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 
 # 5. PUERTO
-# Documentamos qué puerto utiliza el contenedor.
-EXPOSE 8000
+# Cloud Run espera tráfico en el 8080
+EXPOSE 8080
 
-# 6. COMANDO DE INICIO (ENTRYPOINT)
+# 6. COMANDO DE INICIO
 # Comando que se ejecuta cuando el contenedor arranca.
 # Lanza el servidor Uvicorn apuntando al objeto 'app' en 'api_server.py'
-CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Cambiamos explícitamente el puerto a 8080
+CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "8080"]
