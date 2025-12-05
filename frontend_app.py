@@ -10,7 +10,8 @@ import yfinance as yf
 
 
 # --- CONFIGURACIÓN ---
-API_URL = "http://localhost:8000/predict_direction/"
+# Intenta leer de la nube (Secrets), si no usa localhost
+API_URL = os.getenv("API_URL", "http://localhost:8000/predict_direction/")
 
 sys.path.append(".")
 from src.dataset import CommodityDataModule
