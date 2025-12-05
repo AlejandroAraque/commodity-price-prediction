@@ -173,7 +173,7 @@ El script `src/predict_classifier.py` ejecuta una simulación de backtesting par
 
 El sistema solo genera señales de compra/venta cuando la probabilidad supera el umbral definido:
 
-CONFIDENCE_THRESHOLD = 0.50 (50% por defecto)
+CONFIDENCE_THRESHOLD = 0.50 (50% por defecto) 
 
 ### 6.2. Métricas de Evaluación
 
