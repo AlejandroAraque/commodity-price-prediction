@@ -36,13 +36,21 @@ def main(args):
         split_ratio=0.8,
         prediction_horizon=args.prediction_horizon  
     )
+    # --- CAMBIO INTELIGENTE: AUTO-DETECCIÓN DE INPUT SIZE ---
+    print("🔍 Analizando dimensiones de los datos descargados...")
+    dm.prepare_data() # Forzamos la descarga aquí
+    dm.setup()        # Forzamos el procesamiento
     
-    # 3. Descargar y Procesar Datos (Llama a prepare_data y setup)
-    #dm.prepare_data()
-    #dm.setup()
-    #ESTO LO HACE EL TRAINER YA, AL LLAMARLO: trainer.fit(model, dm)
+    # Obtenemos una muestra para ver cuántas columnas reales salieron
+    sample_x, _ = dm.train_dataset[0]
+    real_input_size = sample_x.shape[1] # Debería ser 16 o 18
+    print(f"✅ Input Size detectado automáticamente: {real_input_size} (Argumento ignorado: {args.input_size})")
+    
+    # Sobrescribimos el argumento manual con la realidad
+    args.input_size = real_input_size
+    # -------------------------------------------------------
 
-    # 4. Configurar el Modelo (Llama a la Fábrica Maestra)
+    # 4. Configurar el Modelo (Ahora usa el tamaño real seguro)
     model = LSTMClassifier(
         input_size=args.input_size, 
         model_name=args.model_name,
