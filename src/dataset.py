@@ -5,29 +5,32 @@ import yfinance as yf
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-import pandas_ta_classic as ta
+import pandas_ta_classic as ta  # Asegúrate de usar la versión classic
 import datetime
 import os
 import sys
 
 # --- CONFIGURACIÓN MAESTRA DE ACTIVOS ---
-# Definimos las reglas del juego para cada commodity.
 ASSET_CONFIG = {
     'GC=F': { # ORO
         'name': 'Gold',
-        'exogenous': ['DX-Y.NYB', '^TNX', '^VIX', 'SI=F', 'AUDUSD=X'], # Los "Amigos"
-        'cols_rename': ['USD_Index', 'Interest_Rate', 'VIX', 'Related_Asset', 'Currency_Pair'], # Nombres genéricos
-        'ratio_name': 'Gold_Silver_Ratio' # Nombre específico para la gráfica
+        'exogenous': ['DX-Y.NYB', '^TNX', '^VIX', 'SI=F', 'AUDUSD=X'], 
+        'cols_rename': ['USD_Index', 'Interest_Rate', 'VIX', 'Related_Asset', 'Currency_Pair'], 
+        'ratio_name': 'Gold_Silver_Ratio' 
     },
     'CL=F': { # PETRÓLEO (WTI)
         'name': 'Crude Oil',
-        'exogenous': ['DX-Y.NYB', '^TNX', '^VIX', 'NG=F', 'CADUSD=X'], # NG=Gas, CAD=Canada
-        'cols_rename': ['USD_Index', 'Interest_Rate', 'VIX', 'Related_Asset', 'Currency_Pair'],
+        # FEATURES ESPECÍFICAS PARA PETRÓLEO:
+        # 1. ^OVX: Volatilidad del petróleo.
+        # 2. RB=F: Gasolina (para Crack Spread).
+        'exogenous': ['DX-Y.NYB', '^TNX', '^OVX', 'NG=F', 'RB=F', 'CADUSD=X'], 
+        
+        'cols_rename': ['USD_Index', 'Interest_Rate', 'Oil_VIX', 'Natural_Gas', 'Gasoline', 'Currency_Pair'],
+        
         'ratio_name': 'Oil_Gas_Ratio'
     },
     'SI=F': { # PLATA
         'name': 'Silver',
-        # Para la plata, su "hermano mayor" es el Oro (GC=F) y su metal industrial primo es el Cobre (HG=F)
         'exogenous': ['DX-Y.NYB', '^TNX', '^VIX', 'GC=F', 'HG=F'], 
         'cols_rename': ['USD_Index', 'Interest_Rate', 'VIX', 'Related_Asset', 'Currency_Pair'],
         'ratio_name': 'Silver_Gold_Ratio'
@@ -37,75 +40,78 @@ ASSET_CONFIG = {
 def _add_technical_indicators(df, config):
     df = df.copy()
     
-    # 1. DATOS BÁSICOS (Igual para todos)
+    # 1. DATOS BÁSICOS
     df['Log_Ret'] = np.log(df['Close_Price'] / df['Close_Price'].shift(1))
-    
-    # 2. TARGET BINARIO (Para Clasificación)
     df['Binary_Target'] = (df['Log_Ret'] > 0).astype(float)
     
-    # A. Ratio Principal (El "Hermano")
-    # El código lee en la config cómo llamar a este ratio (ej: 'Gold_Silver_Ratio')
-    # y usa la columna genérica 'Related_Asset' que renombramos abajo.
-    if 'Related_Asset' in df.columns:
+    # --- FEATURE ENGINEERING AVANZADO ---
+    
+    # 2. ESTACIONALIDAD (Solo útil si hay patrones estacionales, vital para Oil/Gas)
+    day_of_year = df.index.dayofyear
+    df['Seasonality_Sin'] = np.sin(2 * np.pi * day_of_year / 365.25)
+    df['Seasonality_Cos'] = np.cos(2 * np.pi * day_of_year / 365.25)
+
+    # 3. RELACIONES ESPECÍFICAS (CRACK SPREAD PROXY)
+    if 'Gasoline' in df.columns:
+        df['Refinery_Margin'] = df['Gasoline'] / df['Close_Price']
+        df['Gasoline_Corr'] = df['Log_Ret'].rolling(window=30).corr(
+            np.log(df['Gasoline'] / df['Gasoline'].shift(1))
+        ).fillna(0)
+
+    # 4. VOLATILIDAD ESPECÍFICA (OVX)
+    if 'Oil_VIX' in df.columns:
+        df['Oil_VIX_Chg'] = df['Oil_VIX'].diff()
+
+    # --- LÓGICA ESTÁNDAR ---
+    
+    if 'Related_Asset' in df.columns: 
         df[config['ratio_name']] = df['Close_Price'] / df['Related_Asset']
     
-    # B. Correlación con el Activo Secundario/Divisa
-    # (Puede ser AUD para oro, CAD para petróleo, Cobre para plata...)
     if 'Currency_Pair' in df.columns:
-        # Calculo el retorno de ese activo secundario
         df['Sec_Asset_Ret'] = np.log(df['Currency_Pair'] / df['Currency_Pair'].shift(1))
-        # Calculamos la correlación móvil
         df['Sec_Asset_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['Sec_Asset_Ret']).fillna(0)
     else:
-        # Si por lo que sea no se descargó, rellenamos con 0 para no romper el modelo
         df['Sec_Asset_Ret'] = 0.0
         df['Sec_Asset_Corr'] = 0.0
 
-    # C. Correlación USD (Siempre existe)
     if 'USD_Index' in df.columns:
         df['USD_Ret'] = np.log(df['USD_Index'] / df['USD_Index'].shift(1))
         df['USD_Corr'] = df['Log_Ret'].rolling(window=20).corr(df['USD_Ret']).fillna(0)
 
-    # 4. INDICADORES TÉCNICOS
+    # 5. INDICADORES TÉCNICOS
     df['RSI'] = ta.rsi(df['Close_Price'], length=14)
     
+    # Bandas de Bollinger (%B es muy útil para Mean Reversion)
+    bbands = ta.bbands(df['Close_Price'], length=20, std=2)
+    if bbands is not None:
+        df['BB_Pct'] = bbands.iloc[:, 4] # Columna %B
+
     macd = ta.macd(df['Close_Price']) 
     if macd is not None:
-        # MACD Histogram (Columna 1 de pandas_ta)
         df['MACD_Hist'] = macd.iloc[:, 1] 
 
     return df
 
 def _load_and_merge_data(ticker, start_date, end_date):
-
     if ticker not in ASSET_CONFIG:
-        raise ValueError(f"❌ Activo {ticker} no configurado. Añádelo a ASSET_CONFIG.")
+        raise ValueError(f"❌ Activo {ticker} no configurado.")
     
-    # Cargamos la configuración específica
     config = ASSET_CONFIG[ticker]
-
-    # Construimos la lista de descarga
-    # El activo principal (ticker) + sus amigos (exogenous)
     ALL_TICKERS = [ticker] + config['exogenous']
     
     print(f"📥 Descargando: {ALL_TICKERS}")
     
+    # Descarga
     df_raw = yf.download(ALL_TICKERS, start=start_date, end=end_date, interval="1d", auto_adjust=True, progress=False)
 
+    # Aplanado seguro (Manejo de MultiIndex de Yahoo)
     try:
         df_close = df_raw.xs('Close', level=0, axis=1)
     except KeyError:
         df_close = df_raw['Close'] if 'Close' in df_raw else df_raw
 
-    # 3. FORZAR ORDEN (CON SEGURIDAD)
-    # Verificamos qué columnas existen realmente antes de reordenar
+    # Reordenamiento seguro
     available_cols = [c for c in ALL_TICKERS if c in df_close.columns]
-    
-    if len(available_cols) < len(ALL_TICKERS):
-        missing = set(ALL_TICKERS) - set(available_cols)
-        print(f"⚠️ Aviso: Faltan datos de: {missing}")
-    
-    # Reordenamos solo con lo que tenemos
     df_ordered = df_close[available_cols].copy()
 
     # Volumen
@@ -120,68 +126,81 @@ def _load_and_merge_data(ticker, start_date, end_date):
     df_final = pd.concat([df_ordered, vol_series], axis=1)
     df_final = df_final.ffill().dropna()
 
-    # CONSTRUIMOS LOS NOMBRES GENÉRICOS
-    # [Precio Cierre] + [Lista de Nombres del Config] + [Volumen]
+    # Renombrado Dinámico
     expected_names = ['Close_Price'] + config['cols_rename'] + ['Volume']
     
-    # Asignamos
     if len(df_final.columns) == len(expected_names):
         df_final.columns = expected_names
     else:
-        # Un pequeño control de errores por si Yahoo falla
-        print(f"⚠️ Alerta: Columnas {len(df_final.columns)} vs Esperadas {len(expected_names)}")
-        # Intentamos asignar igual, pero avisando
-        df_final.columns = expected_names
-        
-    # ... (debajo de la unión de precios y volumen) ...
-
-    # 4. RENOMBRADO DINÁMICO
-    # Construimos la lista de nombres esperados:
-    # [Precio Cierre] + [Nombres del Config] + [Volumen]
-    # config['cols_rename'] viene de ASSET_CONFIG (ej: ['USD_Index', ..., 'Related_Asset', 'Currency_Pair'])
-    expected_names = ['Close_Price'] + config['cols_rename'] + ['Volume']
-    
-    # Asignamos los nombres si las longitudes coinciden
-    if len(df_final.columns) == len(expected_names):
-        df_final.columns = expected_names
-    else:
-        # Fallback de seguridad
-        print(f"⚠️ Alerta: Tienes {len(df_final.columns)} columnas, esperabas {len(expected_names)}.")
+        print(f"⚠️ Alerta Columnas: Tienes {len(df_final.columns)}, esperabas {len(expected_names)}.")
         # Intentamos asignar hasta donde llegue
         df_final.columns = expected_names[:len(df_final.columns)]
 
-    # 5. CALCULAR INDICADORES
-    print(f"📈 Calculando indicadores para {ticker} ({config['name']})...")
-    # ¡IMPORTANTE! Pasamos 'config' aquí
+    # Cálculo de Indicadores
+    print(f"📈 Calculando indicadores extendidos para {ticker}...")
     df_final = _add_technical_indicators(df_final, config)
     
-    # Limpieza final
     df_final = df_final.replace([np.inf, -np.inf], np.nan).dropna()
     
-    # 6. SELECCIÓN FINAL DE COLUMNAS (INPUT DEL MODELO)
-    # Esta lista debe ser GENÉRICA para que sirva para Oro, Petróleo, etc.
-    cols = [
-        'Log_Ret',        
-        'Volume',         
-        'VIX',            
-        'Interest_Rate',  
-        'USD_Ret',        
-        'USD_Corr',      # Correlación USD
-        config['ratio_name'], # Ratio Dinámico (ej: Oil_Gas_Ratio)
-        'Sec_Asset_Ret',      # Retorno Secundario (Genérico)
-        'Sec_Asset_Corr',     # Correlación Secundaria (Genérico)
-        'RSI',            
-        'MACD_Hist',
-        'Binary_Target'       # Target
-    ]
+    # -------------------------------------------------------------------------
+    # 6. SELECCIÓN FINAL DE COLUMNAS (LÓGICA CONDICIONAL)
+    # -------------------------------------------------------------------------
     
-    # Filtramos solo las columnas que realmente existen en el dataframe
+    if ticker == 'CL=F':
+        # --- COLUMNAS PARA EL PETRÓLEO (INCLUYE FEATURES FÍSICAS) ---
+        print("🛢️ Configuración detectada: PETRÓLEO (Modo Avanzado)")
+        cols = [
+            'Log_Ret',        
+            'Volume',         
+            'VIX',            # VIX Genérico
+            'Oil_VIX',        # <--- NUEVO
+            'Oil_VIX_Chg',    # <--- NUEVO
+            'Interest_Rate',  
+            'USD_Ret',        
+            'USD_Corr',      
+            config['ratio_name'], 
+            'Refinery_Margin', # <--- NUEVO (Proxy Crack Spread)
+            'Gasoline_Corr',   # <--- NUEVO
+            'Seasonality_Sin', # <--- NUEVO
+            'Seasonality_Cos', # <--- NUEVO
+            'Sec_Asset_Ret',      
+            'Sec_Asset_Corr',     
+            'RSI',  
+            'BB_Pct',          # <--- NUEVO (Bollinger % B)
+            'MACD_Hist',
+            'Binary_Target'       
+        ]
+    else:
+        # --- COLUMNAS ESTÁNDAR PARA METALES (ORO/PLATA) ---
+        print(f"✨ Configuración detectada: METALES ({ticker})")
+        cols = [
+            'Log_Ret',        
+            'Volume',         
+            'VIX',            
+            'Interest_Rate',  
+            'USD_Ret',        
+            'USD_Corr',      
+            config['ratio_name'], 
+            'Sec_Asset_Ret', 
+            'Sec_Asset_Corr',     
+            'RSI',            
+            'MACD_Hist',
+            'Binary_Target'       
+        ]
+    
+    # Filtramos solo las columnas que realmente existen (seguridad extra)
     final_cols = [c for c in cols if c in df_final.columns]
     
+    # Aviso de depuración por si faltan columnas importantes
+    if len(final_cols) < len(cols):
+        missing = set(cols) - set(final_cols)
+        print(f"⚠️ ATENCIÓN: Faltan las siguientes columnas esperadas: {missing}")
+
     df_final = df_final[final_cols]
     
     return df_final.astype(float)
 
+# --- CLASE COMMODITY DATA MODULE ---
 class CommodityDataModule(pl.LightningDataModule):
     def __init__(self, ticker="GC=F", start_date=None, end_date=None, 
                  window_size=30, batch_size=32, split_ratio=0.8, 
@@ -190,12 +209,8 @@ class CommodityDataModule(pl.LightningDataModule):
         self.save_hyperparameters() 
         self.scaler = MinMaxScaler(feature_range=(0, 1))
         
-        # --- LÓGICA DE FECHAS INTELIGENTE ---
-        # Si no me dicen fecha de fin, asumo que es HOY
         if end_date is None:
             self.hparams.end_date = datetime.date.today().strftime("%Y-%m-%d")
-        
-        # Si no me dicen fecha de inicio, asumo hace 15 años (suficiente historia)
         if start_date is None:
             start_dt = datetime.date.today() - datetime.timedelta(days=365*15)
             self.hparams.start_date = start_dt.strftime("%Y-%m-%d")
@@ -206,28 +221,21 @@ class CommodityDataModule(pl.LightningDataModule):
             self.hparams.start_date, 
             self.hparams.end_date
         )
-        print(f"✅ Descarga completa. Columnas: {len(self.raw_data.columns)}")
+        print(f"✅ Descarga completa. Columnas finales: {len(self.raw_data.columns)}")
 
     def _create_sequences(self, data):
         X, y = [], []
         horizon = self.hparams.prediction_horizon
         
-        # data es el array numpy ESCALADO.
-        # La última columna (-1) es 'Binary_Target'.
-        # Como es 0 o 1, el MinMaxScaler(0,1) la deja igual (0->0, 1->1).
+        # OJO: La última columna (-1) es 'Binary_Target'.
+        # Las features de entrada (X) son todas MENOS la última.
         
-        # No usamos la última columna como input (X), solo como output (y)
-        num_features = data.shape[1] - 1 
-
         for i in range(len(data) - self.hparams.window_size - horizon + 1):
-            # Input: Ventana de 30 días, NO INCLUIMOS LA COLUMNA TARGET EN EL INPUT
-            # data[filas, 0:11] (Las 11 features)
+            # Input: Ventana de 30 días, todas las features MENOS el target
             window = data[i : i + self.hparams.window_size, :-1]
             
-            # Output: Miramos la columna TARGET en el futuro
+            # Output: El valor del target en el futuro
             target_idx = i + self.hparams.window_size + horizon - 1
-            
-            # Cogemos directamente el valor de la columna Binary_Target (-1)
             target_class = data[target_idx, -1] 
             
             X.append(window)
@@ -250,16 +258,16 @@ class CommodityDataModule(pl.LightningDataModule):
         X_train_tensor = torch.tensor(X_train, dtype=torch.float32)
         X_test_tensor = torch.tensor(X_test, dtype=torch.float32)
         
-        # Flatten target
         y_train_tensor = torch.tensor(y_train, dtype=torch.float32)
         y_test_tensor = torch.tensor(y_test, dtype=torch.float32)
         
         self.train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
         self.test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
         
-        print(f"✅ Setup completo.")
-        print(f"   Train X: {X_train_tensor.shape}") 
-        print(f"   Train Y: {y_train_tensor.shape}")
+        print(f"✅ Setup completo para {self.hparams.ticker}.")
+        # Esto te ayudará a ver qué 'input_size' debes poner en train.py
+        print(f"   Train X shape: {X_train_tensor.shape} (Features = {X_train_tensor.shape[2]})") 
+        print(f"   Train Y shape: {y_train_tensor.shape}")
     
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=True, num_workers=0)
